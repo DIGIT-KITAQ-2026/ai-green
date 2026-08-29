@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    background-color: theme("colors.paper");
+  }
+  body {
+    color: theme("colors.ink");
+    font-family: theme("fontFamily.body");
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: theme("fontFamily.display");
+  }
+}
+
+@layer components {
+  .brand-mark {
+    @apply text-tea;
+  }
+
+  .nav-card {
+    @apply flex flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface2
+      py-8 font-bold text-ink transition hover:border-tea hover:bg-tea-soft hover:text-tea-strong;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-tea px-5 py-2.5 font-bold text-white
+      transition hover:bg-tea-strong disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-tea bg-tea-soft px-5 py-2.5
+      font-bold text-tea-strong transition hover:bg-tea/20;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5
+      font-bold text-inksoft transition hover:border-pencil;
+  }
+
+  .field-label {
+    @apply mb-1 block font-mono text-xs uppercase tracking-wide text-inkfaint;
+  }
+
+  .field-input {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink outline-none transition
+      focus:border-tea focus:ring-2 focus:ring-tea/20;
+  }
+
+  .card {
+    @apply rounded-card border border-line bg-surface shadow-sm;
+  }
+
+  .banner-error {
+    @apply rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700;
+  }
+}

@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 所属チーム（所属選択画面 / 業務内容の分類に使用）
+model Team {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  createdAt DateTime    @default(now())
+  users     User[]
+  entries   TaskEntry[]
+}
+
+// ユーザー（新人 / 先輩・管理者）
+model User {
+  id           String   @id @default(cuid())
+  loginId      String   @unique // ログインID（社員ID・メールアドレス等）
+  passwordHash String
+  name         String
+  nickname     String? // 呼び方（マスコットがユーザーを呼ぶ名前）
+  role         String   @default("member") // "member" | "admin"
+  teamId       String?
+  team         Team?    @relation(fields: [teamId], references: [id])
+  createdAt    DateTime @default(now())
+
+  entries      TaskEntry[]
+  chatMessages ChatMessage[]
+}
+
+// 業務内容 / マニュアルのエントリ（登録画面から作成、業務内容・マニュアル画面に一覧表示）
+model TaskEntry {
+  id          String   @id @default(cuid())
+  type        String // "task"（業務内容） | "manual"（マニュアル）
+  title       String
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id])
+  summary     String // AIが生成した要約（一覧・チャット回答で使用）
+  rawText     String // 添付ファイルから抽出したテキスト全文（検索対象）
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  attachments Attachment[]
+}
+
+// アップロードされた画像・PDF（業務内容登録 / チャット添付の両方で使用）
+model Attachment {
+  id            String       @id @default(cuid())
+  kind          String // "image" | "pdf"
+  filename      String
+  mimeType      String
+  data          Bytes // ファイル本体（SQLiteに直接保存）
+  ocrText       String? // このファイル単体から抽出したテキスト
+  taskEntryId   String?
+  taskEntry     TaskEntry?   @relation(fields: [taskEntryId], references: [id])
+  chatMessageId String?
+  chatMessage   ChatMessage? @relation(fields: [chatMessageId], references: [id])
+  createdAt     DateTime     @default(now())
+}
+
+// チャットのメッセージ（新人の質問 / AIの回答）
+model ChatMessage {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id])
+  role                  String // "user" | "assistant"
+  text                  String
+  referencedTaskEntryId String? // AIが回答の根拠にした業務内容ID
+  createdAt             DateTime @default(now())
+
+  attachments Attachment[]
+}
