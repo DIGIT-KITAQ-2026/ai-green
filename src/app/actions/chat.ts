@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseUploadedFiles, UploadValidationError } from "@/lib/uploads";
-import { answerChatQuestion } from "@/lib/anthropic";
+import { answerChatQuestion } from "@/lib/claudeAgent";
 import { rankEntriesByQuery } from "@/lib/retrieval";
 
 /**
@@ -84,7 +84,7 @@ export async function sendChatMessageAction(formData: FormData) {
         userId: user!.id,
         role: "assistant",
         text:
-          "ごめんね、いまAIに接続できなかったみたい。少し時間を置いてもう一度試してみてね。（管理者の方は ANTHROPIC_API_KEY の設定をご確認ください）",
+          "ごめんね、いまAIに接続できなかったみたい。少し時間を置いてもう一度試してみてね。（管理者の方はサーバーで `claude login` が済んでいるかご確認ください）",
       },
     });
   }

@@ -13,9 +13,17 @@ Webアプリです。
 | スタイル | Tailwind CSS（仕様書のトーン＆マナーに合わせた茶色・宇治抹茶色パレット） |
 | データベース | SQLite（Prisma ORM）。画像・PDFの実体もDBに直接保存 |
 | 認証 | ID・パスワード（bcryptによるハッシュ化）+ 署名付きCookieセッション |
-| AI | Anthropic Claude API（`@anthropic-ai/sdk`, モデル: `claude-opus-5`） |
+| AI | Claude Agent SDK（`@anthropic-ai/claude-agent-sdk`）経由でClaude Codeを起動 |
 
-仕様書10章の「AI連携仕様」に対応する部分は [src/lib/anthropic.ts](./src/lib/anthropic.ts) に実装しています。
+**AIの呼び出し方針**：従量課金のAnthropic API（`ANTHROPIC_API_KEY`）は使用しません。
+代わりに [src/lib/claudeAgent.ts](./src/lib/claudeAgent.ts) で `@anthropic-ai/claude-agent-sdk`
+の `query()` を使い、アプリからClaude Code本体を1回限りのセッションとして起動しています。
+認証はこのアプリを動かすマシンにログイン済みのClaude Codeセッション（`claude login`、
+サブスクリプション認証）をそのまま利用します。呼び出しごとにツール（ファイル操作・Bash等）は
+すべて無効化し、プロジェクト設定（CLAUDE.md等）も読み込まない隔離モードにしているため、
+単発の質問応答・資料読み取り以外のことはできないようにしています。
+
+仕様書10章の「AI連携仕様」に対応する部分は [src/lib/claudeAgent.ts](./src/lib/claudeAgent.ts) に実装しています。
 候補の絞り込み（本来はベクトル検索/RAGを想定）は、外部の埋め込みAPIを追加しない
 MVP実装として、文字bi-gramによる簡易な類似度スコアリングで代替しています
 （[src/lib/retrieval.ts](./src/lib/retrieval.ts)）。将来的に本格的なベクトルDBへ
@@ -28,12 +36,17 @@ npm install
 cp .env.example .env
 ```
 
-`.env` を編集し、以下を設定してください。
+`.env` の `SESSION_SECRET` を、適当な長いランダム文字列に変更してください
+（ログインセッションの署名に使います）。
 
-- `ANTHROPIC_API_KEY`：Claude APIキー。チャット回答・登録内容の解析に必須です。
-  未設定の場合でもアプリ自体は動作しますが、AI関連の処理は
-  「AIに接続できませんでした」という案内が表示されます。
-- `SESSION_SECRET`：ログインセッションの署名に使う、適当な長いランダム文字列。
+AIを使う機能（チャット回答・登録内容の解析）を動かすには、**このアプリを実行する
+マシン上で事前に一度だけ** `claude login` を実行し、Claude Codeにログインしておいて
+ください。ANTHROPIC_API_KEYの設定は不要です。ログインしていない場合でもアプリ自体は
+動作しますが、AI関連の処理は「AIに接続できませんでした」という案内が表示されます。
+
+```bash
+claude login
+```
 
 データベースを作成し、初期データ（所属チーム3件・デモアカウント）を投入します。
 
@@ -99,7 +112,7 @@ npm run start
 prisma/schema.prisma       データベース定義
 prisma/seed.ts             初期データ投入スクリプト
 src/lib/auth.ts            認証・セッション
-src/lib/anthropic.ts       Claude API呼び出し（登録内容の解析・チャット回答）
+src/lib/claudeAgent.ts     Claude Agent SDK呼び出し（登録内容の解析・チャット回答）
 src/lib/retrieval.ts       業務内容の簡易検索（候補の絞り込み）
 src/app/actions/*.ts       Server Actions（フォーム送信の処理）
 src/app/(app)/*            ログイン後の画面（ホーム・業務内容・チャット等）

@@ -1,4 +1,4 @@
-import type { UploadedFile } from "./anthropic";
+import type { UploadedFile } from "./claudeAgent";
 
 export const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB
 export const ACCEPTED_MIME_TYPES = [

@@ -1,14 +1,15 @@
-import Anthropic from "@anthropic-ai/sdk";
+import os from "os";
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { ContentBlockParam, MessageParam } from "@anthropic-ai/sdk/resources";
 
-let _client: Anthropic | null = null;
-
-/** Anthropicクライアントを遅延生成する（ANTHROPIC_API_KEY未設定時に import 時点で落ちないように）。 */
-export function getAnthropicClient(): Anthropic {
-  if (!_client) {
-    _client = new Anthropic();
-  }
-  return _client;
-}
+/**
+ * Claude呼び出しはすべて Claude Agent SDK（Claude Codeをライブラリ化したもの）経由で行う。
+ * ANTHROPIC_API_KEY による従量課金APIは使用しない — ローカルの `claude login` セッション
+ * （Claude Codeのサブスクリプション認証）をそのまま利用する。
+ *
+ * ツール（ファイル操作・Bash等）はすべて無効化し、CLAUDE.md等のプロジェクト設定も読み込まない
+ * （settingSources: []）。単発の質問応答・資料読み取りにのみ使う、隔離されたワンショット呼び出し。
+ */
 
 export type UploadedFile = {
   kind: "image" | "pdf";
@@ -17,7 +18,7 @@ export type UploadedFile = {
   filename: string;
 };
 
-function fileToContentBlock(file: UploadedFile): Anthropic.ContentBlockParam {
+function fileToContentBlock(file: UploadedFile): ContentBlockParam {
   const base64 = file.data.toString("base64");
   if (file.kind === "image") {
     return {
@@ -35,11 +36,9 @@ function fileToContentBlock(file: UploadedFile): Anthropic.ContentBlockParam {
   };
 }
 
-function extractText(response: Anthropic.Message): string {
-  return response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+async function* singleTurn(content: ContentBlockParam[]): AsyncGenerator<SDKUserMessage> {
+  const message: MessageParam = { role: "user", content };
+  yield { type: "user", message, parent_tool_use_id: null };
 }
 
 /** モデルの応答からJSONオブジェクトを取り出す。失敗時はnullを返す。 */
@@ -49,6 +48,42 @@ function tryParseJson(text: string): Record<string, unknown> | null {
     return JSON.parse(match ? match[0] : text);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Claude Code(Claude Agent SDK)へ単発の問い合わせを送り、最終テキストを受け取る。
+ * ツールなし・1ターンのみの隔離セッションとして起動し、完了後は必ずプロセスを閉じる。
+ */
+async function runAgentQuery(params: {
+  systemPrompt: string;
+  content: ContentBlockParam[];
+}): Promise<string> {
+  const events = query({
+    prompt: singleTurn(params.content),
+    options: {
+      systemPrompt: params.systemPrompt,
+      tools: [],
+      maxTurns: 1,
+      settingSources: [],
+      cwd: os.tmpdir(),
+    },
+  });
+
+  try {
+    for await (const message of events) {
+      if (message.type === "result") {
+        if (message.subtype === "success") {
+          return message.result;
+        }
+        throw new Error(
+          `Claude Codeでの応答生成に失敗しました（${message.subtype}）: ${message.errors.join(", ") || "詳細不明"}`,
+        );
+      }
+    }
+    throw new Error("Claude Codeから応答が得られませんでした。");
+  } finally {
+    events.close();
   }
 }
 
@@ -66,10 +101,9 @@ export async function analyzeRegistration(params: {
     return { summary: "(添付ファイルなし)", rawText: "" };
   }
 
-  const client = getAnthropicClient();
   const label = params.type === "manual" ? "マニュアル" : "業務内容";
 
-  const content: Anthropic.ContentBlockParam[] = params.files.map(fileToContentBlock);
+  const content: ContentBlockParam[] = params.files.map(fileToContentBlock);
   content.push({
     type: "text",
     text: [
@@ -83,14 +117,12 @@ export async function analyzeRegistration(params: {
     ].join("\n"),
   });
 
-  const response = await client.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 4096,
-    output_config: { effort: "medium" },
-    messages: [{ role: "user", content }],
+  const text = await runAgentQuery({
+    systemPrompt:
+      "あなたは新人研修アプリ「新-cha-」の業務内容登録を手伝うアシスタントです。指示されたJSON形式だけを出力してください。",
+    content,
   });
 
-  const text = extractText(response);
   const parsed = tryParseJson(text);
   if (!parsed) {
     return { summary: text.slice(0, 200) || "(要約を生成できませんでした)", rawText: text };
@@ -117,8 +149,6 @@ export async function answerChatQuestion(params: {
   files: UploadedFile[];
   candidates: CandidateEntry[];
 }): Promise<{ answer: string; referencedTaskEntryId: string | null }> {
-  const client = getAnthropicClient();
-
   const candidateList = params.candidates.length
     ? params.candidates
         .map(
@@ -128,11 +158,10 @@ export async function answerChatQuestion(params: {
         .join("\n")
     : "(まだ該当しそうな業務内容は登録されていません)";
 
-  const content: Anthropic.ContentBlockParam[] = params.files.map(fileToContentBlock);
+  const content: ContentBlockParam[] = params.files.map(fileToContentBlock);
   content.push({
     type: "text",
     text: [
-      "あなたは新人研修アプリ「新-cha-」の湯呑みマスコット案内役です。親しみやすく簡潔な日本語で答えてください。",
       "以下はデータベースに蓄積されている業務内容の候補です。質問内容と最も関連する候補があれば、それを根拠に回答してください。",
       "候補に書かれていないことを答えたり、情報を作り上げたりしないでください。該当する候補がない場合は、その旨を伝えたうえで一般的なアドバイスをしてください。",
       "",
@@ -149,17 +178,18 @@ export async function answerChatQuestion(params: {
     ].join("\n"),
   });
 
-  const response = await client.messages.create({
-    model: "claude-opus-5",
-    max_tokens: 2048,
-    output_config: { effort: "low" },
-    messages: [{ role: "user", content }],
+  const text = await runAgentQuery({
+    systemPrompt:
+      "あなたは新人研修アプリ「新-cha-」の湯呑みマスコット案内役です。親しみやすく簡潔な日本語で答えてください。指示されたJSON形式だけを出力してください。",
+    content,
   });
 
-  const text = extractText(response);
   const parsed = tryParseJson(text);
   if (!parsed) {
-    return { answer: text || "うまく回答を生成できませんでした。もう一度お試しください。", referencedTaskEntryId: null };
+    return {
+      answer: text || "うまく回答を生成できませんでした。もう一度お試しください。",
+      referencedTaskEntryId: null,
+    };
   }
   const referencedId = parsed.referencedId;
   return {

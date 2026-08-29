@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseUploadedFiles, UploadValidationError } from "@/lib/uploads";
-import { analyzeRegistration } from "@/lib/anthropic";
+import { analyzeRegistration } from "@/lib/claudeAgent";
 
 /**
  * 登録画面（業務内容 / マニュアル 共通）。
@@ -61,7 +61,7 @@ export async function createTaskEntryAction(formData: FormData) {
     console.error("AIによる登録内容の解析に失敗しました", err);
     redirect(
       `${newPath}?error=${encodeURIComponent(
-        "AIによる内容の読み取りに失敗しました。時間をおいて再度お試しください。（管理者の方は ANTHROPIC_API_KEY の設定をご確認ください）",
+        "AIによる内容の読み取りに失敗しました。時間をおいて再度お試しください。（管理者の方はサーバーで `claude login` が済んでいるかご確認ください）",
       )}`,
     );
   }
