@@ -1,32 +1,24 @@
-import { Icon } from "./IconSprite";
+import BrandLogo from "./BrandLogo";
+import Mascot from "./Mascot";
 
 /**
- * ログイン・所属選択・登録画面などで使う2カラムのシェル。
- * 左に湯呑みマスコットのブランド表示、右にフォーム本体を置く
- * （仕様書のワイヤーフレーム通り）。
+ * ログイン・新規登録・所属選択で使う2カラムのシェル。
+ * 完成イメージ（1〜2ページ目）どおり、左は濃緑のブランド面に
+ * ロゴとマスコット、右は白地のフォーム。
  */
 export default function AuthCard({
-  brandLabel = "しんちゃ",
-  big = false,
   children,
 }: {
-  brandLabel?: string;
-  big?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="card flex w-full max-w-3xl overflow-hidden">
-        <div className="flex w-[34%] min-w-[140px] flex-col items-center justify-center gap-3 border-r border-line bg-surface px-4 py-10 text-center">
-          <Icon
-            name="cup-face"
-            className={big ? "h-16 w-16 text-tea" : "h-11 w-11 text-tea"}
-          />
-          <span className="font-display text-lg font-semibold">
-            {brandLabel}
-          </span>
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-8 sm:px-6 sm:py-12">
+      <div className="card flex w-full max-w-4xl flex-col overflow-hidden sm:flex-row">
+        <div className="flex flex-col items-center justify-center gap-6 bg-matcha px-6 py-9 text-white sm:w-[38%] sm:py-14">
+          <BrandLogo size="lg" />
+          <Mascot size={170} priority />
         </div>
-        <div className="flex-1 p-8 sm:p-10">{children}</div>
+        <div className="flex-1 px-7 py-9 sm:px-10 sm:py-12">{children}</div>
       </div>
     </div>
   );

@@ -60,6 +60,23 @@ export default function IconSprite() {
         <symbol id="ic-send" viewBox="0 0 24 24">
           <path d="M5 12 19 5l-4.5 14-3-6.5L5 12z" />
         </symbol>
+        <symbol id="ic-calendar" viewBox="0 0 24 24">
+          <rect x="3.5" y="5.5" width="17" height="15" rx="2" />
+          <path d="M3.5 10h17M8 3.5v4M16 3.5v4" />
+          <path d="M7.5 13.5h3M13.5 13.5h3M7.5 17h3M13.5 17h3" />
+        </symbol>
+        <symbol id="ic-check-list" viewBox="0 0 24 24">
+          <path d="M4 7l1.8 1.8L9 5.5M4 16l1.8 1.8L9 14.5" />
+          <path d="M12 7.5h8M12 16.5h8" />
+        </symbol>
+        <symbol id="ic-note" viewBox="0 0 24 24">
+          <path d="M6 3.5h9L19.5 8v12.5h-13z" />
+          <path d="M14.5 3.5V8H19" />
+          <path d="M9 12h6M9 15.5h6" />
+        </symbol>
+        <symbol id="ic-star" viewBox="0 0 24 24">
+          <path d="M12 4.2l2.3 4.9 5.2.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 9.8l5.2-.7z" />
+        </symbol>
         <symbol id="ic-file" viewBox="0 0 24 24">
           <path d="M7 4.5h7l3.5 3.5v11.5H7z" />
           <path d="M14 4.5V8h3.5" />
@@ -79,6 +96,10 @@ const ICON_IDS = [
   "plus",
   "list",
   "folder",
+  "calendar",
+  "check-list",
+  "note",
+  "star",
   "back",
   "drop",
   "send",
@@ -90,9 +111,11 @@ export type IconName = (typeof ICON_IDS)[number];
 export function Icon({
   name,
   className,
+  strokeWidth = 1.6,
 }: {
   name: IconName;
   className?: string;
+  strokeWidth?: number;
 }) {
   return (
     <svg
@@ -100,7 +123,7 @@ export function Icon({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.6}
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

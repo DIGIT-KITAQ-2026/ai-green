@@ -16,10 +16,8 @@ export default async function NewTaskPage({
 
   return (
     <RegisterForm
-      type="task"
       teams={teams}
       defaultTeamId={user.teamId ?? undefined}
-      backHref="/tasks"
       errorMessage={error}
     />
   );

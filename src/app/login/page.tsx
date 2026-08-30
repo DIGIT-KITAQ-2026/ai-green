@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { loginAction } from "@/app/actions/auth";
 import AuthCard from "@/components/AuthCard";
+import PageTitle from "@/components/PageTitle";
 
 export default async function LoginPage({
   searchParams,
@@ -15,16 +16,15 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <AuthCard big>
-      <h1 className="mb-6 inline-block border-b-2 border-tea pb-1 text-xl font-semibold">
-        ログイン
-      </h1>
+    <AuthCard>
+      <PageTitle>ログイン</PageTitle>
 
-      {error && <p className="banner-error mb-4">{error}</p>}
+      {error && <p className="banner-error mb-5">{error}</p>}
 
-      <form action={loginAction} className="flex flex-col gap-4">
-        <div>
-          <label className="field-label" htmlFor="loginId">
+      <form action={loginAction} className="flex flex-col gap-5">
+        {/* 完成イメージはラベルが入力欄の左に並ぶ形。 */}
+        <div className="grid grid-cols-[5.5rem,1fr] items-center gap-x-4 gap-y-4">
+          <label className="field-label mb-0 text-right" htmlFor="loginId">
             ID
           </label>
           <input
@@ -35,9 +35,8 @@ export default async function LoginPage({
             required
             className="field-input"
           />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="password">
+
+          <label className="field-label mb-0 text-right" htmlFor="password">
             パスワード
           </label>
           <input
@@ -52,19 +51,21 @@ export default async function LoginPage({
 
         <Link
           href="/login/forgot"
-          className="-mt-2 text-sm text-inksoft underline underline-offset-2"
+          className="self-end text-sm text-accent underline underline-offset-2 hover:text-accent-strong"
         >
           パスワードを忘れた方はこちら
         </Link>
 
-        <div className="mt-2 flex flex-col gap-3">
-          <Link href="/signup" className="btn-secondary">
-            新規登録はこちら
-          </Link>
-          <button type="submit" className="btn-primary">
-            ログイン
-          </button>
-        </div>
+        <button type="submit" className="btn-primary mt-1 self-end px-12">
+          ログイン
+        </button>
+
+        <Link
+          href="/signup"
+          className="self-end text-sm font-bold text-matcha underline underline-offset-2 hover:text-matcha-deep"
+        >
+          新規登録はこちらから
+        </Link>
       </form>
     </AuthCard>
   );

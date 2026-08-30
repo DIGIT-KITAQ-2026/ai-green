@@ -43,24 +43,30 @@ export default function TeamPicker({
           className="field-input pl-9"
         />
       </div>
-      <div className="max-h-56 overflow-y-auto rounded-lg border border-line">
-        {filtered.length === 0 && (
-          <p className="px-3 py-3 text-sm text-inkfaint">該当するチームがありません</p>
-        )}
-        {filtered.map((team) => (
-          <button
-            key={team.id}
-            type="button"
-            onClick={() => setSelected(team.id)}
-            className={`block w-full border-b border-line px-3 py-2.5 text-left text-sm last:border-b-0 ${
-              selected === team.id
-                ? "bg-tea-soft font-bold text-tea-strong"
-                : "bg-surface text-inksoft hover:bg-surface2"
-            }`}
-          >
-            {team.name}
-          </button>
-        ))}
+
+      {/* 選択行が角丸の内側できれいに切れるよう、枠とスクロール領域を分けている。 */}
+      <div className="overflow-hidden rounded-2xl border-2 border-ink/80 bg-surface">
+        <div className="max-h-56 overflow-y-auto">
+          {filtered.length === 0 && (
+            <p className="px-4 py-3 text-sm text-inkfaint">
+              該当するチームがありません
+            </p>
+          )}
+          {filtered.map((team) => (
+            <button
+              key={team.id}
+              type="button"
+              onClick={() => setSelected(team.id)}
+              className={`block w-full border-b border-line px-4 py-2.5 text-left text-sm transition last:border-b-0 ${
+                selected === team.id
+                  ? "bg-matcha font-bold text-white"
+                  : "bg-surface text-inksoft hover:bg-matcha-soft"
+              }`}
+            >
+              {team.name}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

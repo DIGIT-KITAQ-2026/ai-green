@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { signupAction } from "@/app/actions/auth";
 import AuthCard from "@/components/AuthCard";
+import PageTitle from "@/components/PageTitle";
 
 export default async function SignupPage({
   searchParams,
@@ -16,11 +17,9 @@ export default async function SignupPage({
 
   return (
     <AuthCard>
-      <h1 className="mb-6 inline-block border-b-2 border-tea pb-1 text-xl font-semibold">
-        新規登録
-      </h1>
+      <PageTitle>新規登録</PageTitle>
 
-      {error && <p className="banner-error mb-4">{error}</p>}
+      {error && <p className="banner-error mb-5">{error}</p>}
 
       <form action={signupAction} className="flex flex-col gap-4">
         <div>
@@ -57,13 +56,16 @@ export default async function SignupPage({
           />
         </div>
 
-        <div className="mt-2 flex flex-col gap-3">
-          <button type="submit" className="btn-primary">
-            登録して次へ（所属選択）
-          </button>
-          <Link href="/login" className="btn-ghost">
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-4">
+          <Link
+            href="/login"
+            className="text-sm font-bold text-matcha underline underline-offset-2 hover:text-matcha-deep"
+          >
             ログイン画面へ戻る
           </Link>
+          <button type="submit" className="btn-primary">
+            登録して次へ
+          </button>
         </div>
       </form>
     </AuthCard>

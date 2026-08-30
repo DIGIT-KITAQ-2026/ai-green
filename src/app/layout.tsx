@@ -16,9 +16,17 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
+        {/* 見出し=Zen Kaku Gothic New(極太) / ロゴ=Zen Maru Gothic(丸ゴシック)。
+            マスコットのセリフだけ手書き調の Klee One を残している。 */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin=""
+        />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Klee+One:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Zen+Maru+Gothic:wght@300;400;500&family=Klee+One:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
         />
       </head>
       <body className="bg-paper text-ink">

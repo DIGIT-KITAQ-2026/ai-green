@@ -3,6 +3,8 @@ node_modules/
 out/
 prisma/data/*.db
 prisma/data/*.db-journal
+# 手動で取ったDBバックアップ（shincha.db.bak-YYYYMMDD-HHMMSS など）
+prisma/data/*.bak*
 .env
 .env.local
 *.log

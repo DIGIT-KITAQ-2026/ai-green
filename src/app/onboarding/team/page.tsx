@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { selectTeamAction } from "@/app/actions/onboarding";
 import AuthCard from "@/components/AuthCard";
+import PageTitle from "@/components/PageTitle";
 import TeamPicker from "@/components/TeamPicker";
 
 export default async function TeamOnboardingPage({
@@ -19,13 +20,15 @@ export default async function TeamOnboardingPage({
 
   return (
     <AuthCard>
-      <p className="mb-6 text-lg">所属を選択してください。</p>
+      <PageTitle>所属選択</PageTitle>
 
-      {error && <p className="banner-error mb-4">{error}</p>}
+      <p className="mb-5 text-inksoft">所属部署を選択してください</p>
+
+      {error && <p className="banner-error mb-5">{error}</p>}
 
       <form action={selectTeamAction} className="flex flex-col gap-5">
         <TeamPicker teams={teams} />
-        <button type="submit" className="btn-primary">
+        <button type="submit" className="btn-primary self-end px-12">
           決定
         </button>
       </form>

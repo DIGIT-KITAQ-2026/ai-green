@@ -36,15 +36,15 @@ export default function Dropzone({
           if (e.dataTransfer.files.length) applyFiles(e.dataTransfer.files);
         }}
         onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed text-center transition ${
-          compact ? "min-h-[64px] px-3 py-3 text-xs" : "min-h-[140px] px-4 py-8 text-sm"
+        className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-[3px] border-dashed text-center transition ${
+          compact ? "min-h-[72px] px-3 py-3 text-xs" : "min-h-[200px] px-4 py-10 text-sm"
         } ${
           isOver
-            ? "border-tea bg-tea-soft text-tea-strong"
-            : "border-pencil bg-surface2 text-inkfaint"
+            ? "border-matcha bg-matcha-soft text-matcha-deep"
+            : "border-matcha/60 bg-surface text-inksoft hover:bg-matcha-soft/50"
         }`}
       >
-        <Icon name="drop" className={compact ? "h-5 w-5" : "h-7 w-7"} />
+        <Icon name="drop" className={compact ? "h-6 w-6" : "h-12 w-12"} strokeWidth={1.4} />
         <p className="font-bold">ファイルをドラッグ＆ドロップ</p>
         {!compact && <p>または、クリックして選択（画像 jpg/png・PDF）</p>}
         {fileNames.length > 0 && (
@@ -52,7 +52,7 @@ export default function Dropzone({
             {fileNames.map((n) => (
               <li
                 key={n}
-                className="rounded border border-line bg-surface px-2 py-0.5 font-mono text-[11px] text-ink"
+                className="rounded-full border border-matcha-line bg-white px-2.5 py-0.5 text-[11px] text-ink"
               >
                 {n}
               </li>

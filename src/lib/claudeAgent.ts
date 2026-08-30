@@ -94,20 +94,17 @@ async function runAgentQuery(params: {
 export async function analyzeRegistration(params: {
   title: string;
   teamName: string;
-  type: "task" | "manual";
   files: UploadedFile[];
 }): Promise<{ summary: string; rawText: string }> {
   if (params.files.length === 0) {
     return { summary: "(添付ファイルなし)", rawText: "" };
   }
 
-  const label = params.type === "manual" ? "マニュアル" : "業務内容";
-
   const content: ContentBlockParam[] = params.files.map(fileToContentBlock);
   content.push({
     type: "text",
     text: [
-      `これは「${params.teamName}」チームの${label}「${params.title}」として登録される資料です。`,
+      `これは「${params.teamName}」チームの業務内容「${params.title}」として登録される資料です。`,
       "添付された画像・PDFの内容を読み取り、次のJSON形式のみで回答してください。",
       "説明文やMarkdownのコードブロックは付けず、JSONオブジェクト1つだけを出力してください。",
       "{",
@@ -140,14 +137,23 @@ export type CandidateEntry = {
   teamName: string;
 };
 
+export type HistoryTurn = {
+  role: "user" | "assistant";
+  text: string;
+};
+
 /**
  * チャット画面: 新人の質問（＋任意の添付）と、検索でヒットした業務内容の
  * 候補一覧をもとに、AIが回答と参照元の業務内容を選ぶ。
+ *
+ * 過去の会話を開き直して続きを聞けるよう、同じ会話の直近のやり取りも渡す。
+ * これがないと「さっきの件だけど」のような聞き方が通じない。
  */
 export async function answerChatQuestion(params: {
   question: string;
   files: UploadedFile[];
   candidates: CandidateEntry[];
+  history?: HistoryTurn[];
 }): Promise<{ answer: string; referencedTaskEntryId: string | null }> {
   const candidateList = params.candidates.length
     ? params.candidates
@@ -158,6 +164,16 @@ export async function answerChatQuestion(params: {
         .join("\n")
     : "(まだ該当しそうな業務内容は登録されていません)";
 
+  const historyBlock = params.history?.length
+    ? [
+        "【これまでの会話】",
+        params.history
+          .map((h) => `${h.role === "user" ? "新人" : "あなた"}: ${h.text}`)
+          .join("\n"),
+        "",
+      ]
+    : [];
+
   const content: ContentBlockParam[] = params.files.map(fileToContentBlock);
   content.push({
     type: "text",
@@ -167,6 +183,9 @@ export async function answerChatQuestion(params: {
       "",
       "【業務内容の候補】",
       candidateList,
+      "",
+      ...historyBlock,
+      "会話の続きであれば、これまでのやり取りを踏まえて答えてください。ただし根拠はあくまで上の候補に限ります。",
       "",
       `【新人からの質問】\n${params.question || "(添付ファイルのみ)"}`,
       "",

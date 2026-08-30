@@ -6,12 +6,5 @@ export default async function TasksPage({
   searchParams: Promise<{ team?: string }>;
 }) {
   const { team } = await searchParams;
-  return (
-    <EntryListPage
-      type="task"
-      newHref="/tasks/new"
-      detailBasePath="/tasks"
-      selectedTeamId={team}
-    />
-  );
+  return <EntryListPage selectedTeamId={team} />;
 }

@@ -14,6 +14,7 @@ model Team {
   createdAt DateTime    @default(now())
   users     User[]
   entries   TaskEntry[]
+  events    Event[]
 }
 
 // ユーザー（新人 / 先輩・管理者）
@@ -28,14 +29,37 @@ model User {
   team         Team?    @relation(fields: [teamId], references: [id])
   createdAt    DateTime @default(now())
 
-  entries      TaskEntry[]
-  chatMessages ChatMessage[]
+  // 育成要素。質問・ToDo消化・業務内容の登録で貯まる（src/lib/rewards.ts）。
+  xp               Int     @default(0)
+  // 選択中のキャラクター／着せ替え。ID は rewards.ts のカタログを指す。
+  selectedRewardId String?
+
+  entries       TaskEntry[]
+  chatMessages  ChatMessage[]
+  conversations Conversation[]
+  events        Event[]
+  todos         Todo[]
+  notes         Note[]
 }
 
-// 業務内容 / マニュアルのエントリ（登録画面から作成、業務内容・マニュアル画面に一覧表示）
+// チャットの会話（スレッド）。過去の会話を残したまま新しい会話を始められるようにする。
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String // 最初の質問から自動で付ける見出し
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // 一覧を新しい順に並べるために使う
+
+  messages ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+// 業務内容のエントリ（登録画面から作成、業務内容画面に一覧表示）。
+// もとは「業務内容」と「マニュアル」に分かれていたが、機能が同じだったため統合した。
 model TaskEntry {
   id          String   @id @default(cuid())
-  type        String // "task"（業務内容） | "manual"（マニュアル）
   title       String
   teamId      String
   team        Team     @relation(fields: [teamId], references: [id])
@@ -65,13 +89,61 @@ model Attachment {
 
 // チャットのメッセージ（新人の質問 / AIの回答）
 model ChatMessage {
-  id                    String   @id @default(cuid())
+  id                    String        @id @default(cuid())
   userId                String
-  user                  User     @relation(fields: [userId], references: [id])
+  user                  User          @relation(fields: [userId], references: [id])
+  conversationId        String
+  conversation          Conversation  @relation(fields: [conversationId], references: [id])
   role                  String // "user" | "assistant"
   text                  String
   referencedTaskEntryId String? // AIが回答の根拠にした業務内容ID
   createdAt             DateTime @default(now())
 
   attachments Attachment[]
+}
+
+// カレンダーの予定。チーム単位で共有し、研修や締め日、定例会議などを置く。
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  // 日付のみを扱う（時刻は startTime に文字列で持たせ、未入力なら終日扱い）。
+  date        DateTime
+  startTime   String? // "09:30" 形式。未入力なら終日の予定
+  note        String?
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id])
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([teamId, date])
+}
+
+// ToDo。新人が自分のやることを管理するため、ユーザーごとに持つ。
+model Todo {
+  id          String    @id @default(cuid())
+  title       String
+  dueDate     DateTime? // 期限（任意）
+  done        Boolean   @default(false)
+  completedAt DateTime?
+  // 経験値は最初に完了したとき1回だけ付ける（チェックし直しで増えないように）。
+  xpAwarded   Boolean   @default(false)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, done, dueDate])
+}
+
+// メモ。新人が気づいたことをその場で書き留めるためのもの。ユーザーごとに持つ。
+model Note {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
 }

@@ -19,44 +19,104 @@
 }
 
 @layer components {
-  .brand-mark {
-    @apply text-tea;
+  /* ------------------------------------------------------------------
+   * ブランド
+   * ---------------------------------------------------------------- */
+
+  /** 「新-cha-」ロゴ。完成イメージの丸ゴシック＋大きめの字間。 */
+  .brand-logo {
+    @apply font-logo font-normal leading-none tracking-[0.02em];
   }
 
-  .nav-card {
-    @apply flex flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface2
-      py-8 font-bold text-ink transition hover:border-tea hover:bg-tea-soft hover:text-tea-strong;
+  /* ------------------------------------------------------------------
+   * 見出し（太字＋下に緑のバー）
+   * ---------------------------------------------------------------- */
+
+  .page-title {
+    @apply font-display text-2xl font-black leading-tight tracking-tight text-ink;
   }
 
+  .page-title-bar {
+    @apply mt-2 h-[6px] w-24 rounded-full bg-matcha;
+  }
+
+  .section-title {
+    @apply font-display text-lg font-bold text-ink;
+  }
+
+  /* ------------------------------------------------------------------
+   * ボタン
+   * ---------------------------------------------------------------- */
+
+  /** 主要アクション（登録・新規追加・ログイン）。完成イメージの青。 */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-tea px-5 py-2.5 font-bold text-white
-      transition hover:bg-tea-strong disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3 font-bold
+      text-white shadow-lift transition hover:bg-accent-strong
+      disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  /** 副次アクション。緑の面。 */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-tea bg-tea-soft px-5 py-2.5
-      font-bold text-tea-strong transition hover:bg-tea/20;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-matcha px-5 py-2.5 font-bold
+      text-white transition hover:bg-matcha-deep disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  /** 3番目のレベル。枠線だけの控えめなボタン。 */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5
-      font-bold text-inksoft transition hover:border-pencil;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5
+      font-bold text-inksoft transition hover:border-matcha hover:text-matcha;
   }
+
+  /* ------------------------------------------------------------------
+   * フォーム
+   * ---------------------------------------------------------------- */
 
   .field-label {
-    @apply mb-1 block font-mono text-xs uppercase tracking-wide text-inkfaint;
+    @apply mb-1.5 block text-sm font-bold text-inksoft;
   }
 
+  /** 完成イメージの入力欄は黒縁のピル型。 */
   .field-input {
-    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-ink outline-none transition
-      focus:border-tea focus:ring-2 focus:ring-tea/20;
+    @apply w-full rounded-full border-2 border-ink/80 bg-surface px-4 py-2.5 text-ink outline-none
+      transition placeholder:text-inkfaint focus:border-matcha focus:ring-4 focus:ring-matcha/15;
   }
+
+  /** 複数行・リストなど角丸長方形が自然な箇所向け。 */
+  .field-box {
+    @apply w-full rounded-2xl border-2 border-ink/80 bg-surface px-4 py-2.5 text-ink outline-none
+      transition placeholder:text-inkfaint focus:border-matcha focus:ring-4 focus:ring-matcha/15;
+  }
+
+  /* ------------------------------------------------------------------
+   * 面・カード
+   * ---------------------------------------------------------------- */
 
   .card {
     @apply rounded-card border border-line bg-surface shadow-sm;
   }
 
+  /** ホームの2×2メニュー。完成イメージの濃緑タイル。 */
+  .tile {
+    @apply flex flex-col items-center justify-center gap-3 rounded-tile bg-matcha px-4 py-8
+      text-center font-bold text-white shadow-tile transition
+      hover:-translate-y-0.5 hover:bg-matcha-mid;
+  }
+
+  /** サイドバーのナビゲーション項目（緑地に白の箱）。 */
+  .side-link {
+    @apply block rounded-lg bg-white/95 px-4 py-2.5 text-center text-sm font-bold text-ink
+      transition hover:bg-white;
+  }
+
+  .side-link-active {
+    @apply bg-folder text-matcha-deep;
+  }
+
   .banner-error {
-    @apply rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700;
+    @apply rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700;
+  }
+
+  .banner-ok {
+    @apply rounded-xl border border-matcha-line bg-matcha-soft px-4 py-3 text-sm font-bold text-matcha-deep;
   }
 }
