@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import BrandLogo from "./BrandLogo";
 import Mascot from "./Mascot";
 import { Icon, IconName } from "./IconSprite";
+import LevelUpModal from "./LevelUpModal";
 import { logoutAction } from "@/app/actions/auth";
 
 // チャットが主機能なので先頭に置く。
@@ -78,6 +79,8 @@ export default function SideNav({
 
   return (
     <>
+      <LevelUpModal level={level.level} />
+
       {/* デスクトップ: 左の緑サイドバー */}
       <aside
         className={`sticky top-0 hidden h-screen shrink-0 flex-col bg-matcha py-6 text-white transition-[width] duration-200 lg:flex ${
