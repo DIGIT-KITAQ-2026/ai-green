@@ -48,12 +48,23 @@ AIを使う機能（チャット回答・登録内容の解析）を動かすに
 claude login
 ```
 
-データベースを作成し、初期データ（所属チーム3件・デモアカウント）を投入します。
+データベースを作成し、初期データを投入します。
 
 ```bash
 npm run db:push
 npm run db:seed
 ```
+
+`db:seed` で入るもの:
+
+- 所属チーム3件（営業チーム / 開発チーム / カスタマーサポート）
+- デモアカウント（`demo@shincha.local` / `password123`）
+- デモ用の業務内容7件（PDF添付つき）
+
+デモ用の業務内容は `prisma/seed-data/` に置いています。実際に登録画面から
+PDFをアップロードしてAIに読み取らせた結果（要約・全文テキスト）を書き出したものなので、
+`claude login` が済んでいない環境でも同じデモデータを再現できます。
+同じタイトルが既にあれば追加しないため、`db:seed` は何度実行しても増えません。
 
 開発サーバーを起動します。
 
@@ -111,6 +122,7 @@ npm run start
 ```
 prisma/schema.prisma       データベース定義
 prisma/seed.ts             初期データ投入スクリプト
+prisma/seed-data/          デモ用の業務内容（JSON＋添付PDF）
 src/lib/auth.ts            認証・セッション
 src/lib/claudeAgent.ts     Claude Agent SDK呼び出し（登録内容の解析・チャット回答）
 src/lib/retrieval.ts       業務内容の簡易検索（候補の絞り込み）
