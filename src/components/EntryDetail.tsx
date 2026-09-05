@@ -91,7 +91,8 @@ export default async function EntryDetail({
       </div>
 
       <p className="mt-8 text-[11px] text-inkfaint">
-        登録者: {entry.createdBy.name} ／ {entry.createdAt.toLocaleString("ja-JP")}
+        登録者: {entry.createdBy?.name ?? "退会したユーザー"} ／{" "}
+        {entry.createdAt.toLocaleString("ja-JP")}
       </p>
 
       <form

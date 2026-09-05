@@ -5,10 +5,12 @@ import {
   updateNicknameAction,
   updateTeamAction,
   changePasswordAction,
+  deleteAccountAction,
 } from "@/app/actions/settings";
 import { logoutAction } from "@/app/actions/auth";
 import TeamPicker from "@/components/TeamPicker";
 import SubmitButton from "@/components/SubmitButton";
+import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import PageTitle from "@/components/PageTitle";
 import Mascot from "@/components/Mascot";
 
@@ -28,6 +30,15 @@ export default async function SettingsPage({
 
   const { saved, error } = await searchParams;
   const teams = await prisma.team.findMany({ orderBy: { name: "asc" } });
+
+  // 削除で何が消えて何が残るかを、実際の件数で示す
+  const [conversations, todos, notes, entries] = await Promise.all([
+    prisma.conversation.count({ where: { userId: user.id } }),
+    prisma.todo.count({ where: { userId: user.id } }),
+    prisma.note.count({ where: { userId: user.id } }),
+    prisma.taskEntry.count({ where: { createdById: user.id } }),
+  ]);
+  const counts = { conversations, todos, notes, entries };
 
   return (
     <div className="max-w-2xl">
@@ -124,6 +135,65 @@ export default async function SettingsPage({
             <button type="submit" className="btn-ghost">
               ログアウトする
             </button>
+          </form>
+        </section>
+
+        {/* 取り消せない操作なので、他と切り離して最後に置く */}
+        <section className="rounded-tile border-2 border-red-200 bg-red-50/60 p-6">
+          <h2 className="section-title mb-1 text-red-700">アカウントの削除</h2>
+          <p className="mb-4 text-sm leading-relaxed text-inksoft">
+            アカウントを削除すると、
+            <strong className="font-bold">
+              チャットの履歴・ToDo・メモ
+            </strong>
+            はすべて消えます。元に戻すことはできません。
+            <br />
+            <strong className="font-bold">
+              登録した業務内容とカレンダーの予定はチームに残ります
+            </strong>
+            （登録者の表示は「退会したユーザー」になります）。
+          </p>
+
+          <dl className="mb-4 flex flex-wrap gap-x-5 gap-y-1 rounded-xl bg-white px-4 py-3 text-xs">
+            <div className="flex gap-1.5">
+              <dt className="text-inkfaint">消えるチャット</dt>
+              <dd className="font-bold">{counts.conversations}件</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-inkfaint">消えるToDo</dt>
+              <dd className="font-bold">{counts.todos}件</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-inkfaint">消えるメモ</dt>
+              <dd className="font-bold">{counts.notes}件</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-inkfaint">チームに残る業務内容</dt>
+              <dd className="font-bold">{counts.entries}件</dd>
+            </div>
+          </dl>
+
+          <form action={deleteAccountAction} className="flex flex-col gap-3">
+            <div>
+              <label className="field-label" htmlFor="deletePassword">
+                確認のため、パスワードを入力してください
+              </label>
+              <input
+                id="deletePassword"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                className="field-input max-w-sm"
+              />
+            </div>
+            <ConfirmSubmitButton
+              confirmMessage={`アカウント「${user.loginId}」を削除します。チャット履歴・ToDo・メモがすべて消え、元に戻せません。本当によろしいですか？`}
+              pendingLabel="削除中…"
+              className="self-start rounded-xl bg-red-600 px-6 py-2.5 font-bold text-white transition hover:bg-red-700 disabled:opacity-50"
+            >
+              アカウントを削除する
+            </ConfirmSubmitButton>
           </form>
         </section>
       </div>
