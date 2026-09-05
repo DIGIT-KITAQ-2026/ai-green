@@ -103,6 +103,7 @@ export const REWARDS: Reward[] = [
     requiredLevel: 2,
     description: "ほんのり桜色の装い。はじめての着せ替え。",
     accent: "#FBE4EC",
+    image: "/sakura-shincha.png",
   },
   {
     id: "latte",
