@@ -18,7 +18,7 @@ export default async function ChatHomePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [conversations, recentEntries] = await Promise.all([
+  const [conversations, recentEntries, teamMembers] = await Promise.all([
     prisma.conversation.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
@@ -40,6 +40,13 @@ export default async function ChatHomePage() {
       take: 4,
       select: { title: true },
     }),
+    // admin専用: 同じチームのmemberの一覧（チャットの閲覧・コメント用）。
+    user.role === "admin" && user.teamId
+      ? prisma.user.findMany({
+          where: { teamId: user.teamId, role: "member" },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const summaries: ConversationSummary[] = conversations.map((c) => ({
@@ -102,6 +109,36 @@ export default async function ChatHomePage() {
         </div>
         <ConversationList conversations={summaries} />
       </section>
+
+      {/* 下下部: admin専用。同じチームのmemberのチャットを見に行く導線。 */}
+      {user.role === "admin" && (
+        <section className="mt-9">
+          <div className="mb-4 flex items-baseline gap-2.5">
+            <h2 className="section-title">チームメンバーのチャット</h2>
+            {teamMembers.length > 0 && (
+              <span className="text-xs text-inkfaint">{teamMembers.length}人</span>
+            )}
+          </div>
+          {teamMembers.length === 0 ? (
+            <p className="rounded-tile border-2 border-dashed border-matcha-line bg-matcha-soft px-6 py-8 text-center text-sm leading-relaxed text-matcha-deep">
+              同じチームに新人がまだいないようです。
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2.5">
+              {teamMembers.map((m) => (
+                <Link
+                  key={m.id}
+                  href={`/chat/team/${m.id}`}
+                  className="flex items-center gap-1.5 rounded-full border border-matcha-line bg-white px-3.5 py-2 text-xs font-bold text-matcha-deep transition hover:border-matcha hover:bg-matcha-soft"
+                >
+                  <Icon name="person" className="h-4 w-4" />
+                  {m.nickname ?? m.name}さんのチャットを見る
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

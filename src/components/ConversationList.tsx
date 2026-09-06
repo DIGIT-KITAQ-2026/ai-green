@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { deleteConversationAction } from "@/app/actions/chat";
+import { conversationStamp as stamp } from "@/lib/chatFormat";
 import ConfirmSubmitButton from "./ConfirmSubmitButton";
 
 export type ConversationSummary = {
@@ -10,25 +11,6 @@ export type ConversationSummary = {
   /** 一覧で中身を思い出せるように、最後のやり取りを少しだけ見せる。 */
   lastMessage: string;
 };
-
-const DATE_FMT = new Intl.DateTimeFormat("ja-JP", {
-  month: "numeric",
-  day: "numeric",
-});
-const TIME_FMT = new Intl.DateTimeFormat("ja-JP", {
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-/** 同じ日なら時刻、違う日なら日付を出す。 */
-function stamp(d: Date): string {
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  return sameDay ? `今日 ${TIME_FMT.format(d)}` : DATE_FMT.format(d);
-}
 
 /**
  * チャットのホーム画面に並べる、過去の会話のカード一覧。

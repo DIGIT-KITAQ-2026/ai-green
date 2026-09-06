@@ -19,6 +19,11 @@ export async function createTaskEntryAction(formData: FormData) {
   const listPath = "/tasks";
   const newPath = `${listPath}/new`;
 
+  // 登録は先輩・管理者のみ。新人は閲覧のみで、直接POSTされても弾く。
+  if (user!.role !== "admin") {
+    redirect(`${listPath}?error=${encodeURIComponent("業務内容の登録は先輩・管理者のみ行えます")}`);
+  }
+
   const title = String(formData.get("title") ?? "").trim();
   const teamId = String(formData.get("teamId") ?? user!.teamId ?? "");
 
@@ -93,14 +98,19 @@ export async function createTaskEntryAction(formData: FormData) {
 
 /**
  * 業務内容を削除する。
- * チーム全員で育てるナレッジなので、ログインしていれば誰でも消せる
+ * チーム全員で育てるナレッジなので、先輩・管理者であれば登録者を問わず消せる
  * （登録者本人に限定すると、辞めた人の資料を整理できなくなるため）。
+ * 新人(member)は閲覧のみで削除はできない。
  * Attachment.taskEntryId は任意リレーションなので、先に添付を消さないと
  * 参照だけが外れた添付が残ってしまう。必ず 添付 → 本体 の順で削除する。
  */
 export async function deleteTaskEntryAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+
+  if (user!.role !== "admin") {
+    redirect(`/tasks?error=${encodeURIComponent("業務内容の削除は先輩・管理者のみ行えます")}`);
+  }
 
   const id = String(formData.get("entryId") ?? "").trim();
   const entry = id ? await prisma.taskEntry.findUnique({ where: { id } }) : null;
