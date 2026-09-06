@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { Icon } from "./IconSprite";
 import Mascot from "./Mascot";
 import PageTitle from "./PageTitle";
@@ -14,6 +15,10 @@ export default async function EntryDetail({
   id: string;
   backHref: string;
 }) {
+  // 認可はレイアウトに任せず、データを取る直前で必ず確認する（EntryListPageと同じ理由）。
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
   const entry = await prisma.taskEntry.findUnique({
     where: { id },
     include: { team: true, createdBy: true, attachments: true },
@@ -91,7 +96,8 @@ export default async function EntryDetail({
       </div>
 
       <p className="mt-8 text-[11px] text-inkfaint">
-        登録者: {entry.createdBy.name} ／ {entry.createdAt.toLocaleString("ja-JP")}
+        登録者: {entry.createdBy?.name ?? "退会したユーザー"} ／{" "}
+        {entry.createdAt.toLocaleString("ja-JP")}
       </p>
 
       <form

@@ -131,7 +131,7 @@ export default async function CalendarPage({
                         </p>
                       )}
                       <p className="mt-0.5 text-[10px] text-inkfaint">
-                        登録: {e.createdBy.name}
+                        登録: {e.createdBy?.name ?? "退会したユーザー"}
                       </p>
                     </div>
                     <form action={deleteEventAction} className="shrink-0">

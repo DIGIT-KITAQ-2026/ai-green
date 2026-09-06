@@ -103,6 +103,7 @@ export const REWARDS: Reward[] = [
     requiredLevel: 2,
     description: "ほんのり桜色の装い。はじめての着せ替え。",
     accent: "#FBE4EC",
+    image: "/sakura-shincha.png",
   },
   {
     id: "latte",
@@ -111,14 +112,16 @@ export const REWARDS: Reward[] = [
     requiredLevel: 3,
     description: "ミルクをそそいだまろやかな装い。",
     accent: "#F5E7D0",
+    image: "/rate_shincha.png",
   },
   {
     id: "hojicha",
-    name: "ほうじちゃ先輩",
+    name: "ほうじ茶先輩",
     kind: "character",
     requiredLevel: 4,
     description: "香ばしくて落ち着いた先輩。少し低い声で教えてくれる。",
     accent: "#E4D3BE",
+    image: "/houzicha_senpai.png",
   },
   {
     id: "sencha",

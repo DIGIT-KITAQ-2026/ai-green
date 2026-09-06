@@ -27,7 +27,7 @@ export default async function TeamOnboardingPage({
       {error && <p className="banner-error mb-5">{error}</p>}
 
       <form action={selectTeamAction} className="flex flex-col gap-5">
-        <TeamPicker teams={teams} />
+        <TeamPicker teams={teams} defaultTeamId={teams[0]?.id} />
         <button type="submit" className="btn-primary self-end px-12">
           決定
         </button>

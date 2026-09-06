@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { Icon } from "./IconSprite";
 import FolderCard from "./FolderCard";
 import Mascot from "./Mascot";
@@ -16,6 +18,12 @@ export default async function EntryListPage({
 }: {
   selectedTeamId?: string;
 }) {
+  // 認可はレイアウトに任せず、データを取る直前で必ず確認する。
+  // レイアウトの redirect はページの描画自体は止めないため、これが無いと
+  // 未ログインでもレスポンス本文に業務内容が載ってしまう。
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
   const [teams, entries] = await Promise.all([
     // 色は作成順に配るので、この順で取得する（表示は名前順に並べ替える）。
     prisma.team.findMany({ orderBy: { createdAt: "asc" } }),
