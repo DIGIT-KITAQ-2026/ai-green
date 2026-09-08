@@ -16,6 +16,8 @@ import MonthCalendar from "@/components/MonthCalendar";
 import PageTitle from "@/components/PageTitle";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import TodoList from "@/components/TodoList";
+import TodoQuickAdd from "@/components/TodoQuickAdd";
 
 const DAY_FMT = new Intl.DateTimeFormat("ja-JP", {
   month: "long",
@@ -36,15 +38,35 @@ export default async function CalendarPage({
   const range = monthRange(yearMonth);
   const selectedKey = day ?? todayKey();
 
-  const events = user.teamId
-    ? await prisma.event.findMany({
-        where: { teamId: user.teamId, date: { gte: range.gte, lt: range.lt } },
-        orderBy: [{ date: "asc" }, { startTime: "asc" }],
-        include: { createdBy: { select: { name: true } } },
-      })
-    : [];
+  const [events, monthTodos, noDueTodos] = await Promise.all([
+    user.teamId
+      ? prisma.event.findMany({
+          where: { teamId: user.teamId, date: { gte: range.gte, lt: range.lt } },
+          orderBy: [{ date: "asc" }, { startTime: "asc" }],
+          include: { createdBy: { select: { name: true } } },
+        })
+      : Promise.resolve([]),
+    // カレンダーのマスと、選択日パネルの「この日が期限のToDo」に使う。
+    prisma.todo.findMany({
+      where: { userId: user.id, dueDate: { gte: range.gte, lt: range.lt } },
+      orderBy: [{ done: "asc" }, { createdAt: "asc" }],
+    }),
+    // 期限のないToDoは日付マスに置けないので、ページ下部に常時リストする。
+    prisma.todo.findMany({
+      where: { userId: user.id, dueDate: null },
+      orderBy: [{ done: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+
+  // where句で絞り込み済みだが、Prisma上の型は Date | null のままなので明示的に絞る。
+  const datedTodos = monthTodos.filter(
+    (t): t is typeof t & { dueDate: Date } => t.dueDate !== null,
+  );
 
   const selected = events.filter((e) => dateKey(e.date) === selectedKey);
+  const selectedTodos = datedTodos.filter((t) => dateKey(t.dueDate) === selectedKey);
+  const openNoDueTodos = noDueTodos.filter((t) => !t.done);
+  const doneNoDueTodos = noDueTodos.filter((t) => t.done);
   const prev = formatYearMonth(shiftMonth(yearMonth, -1));
   const next = formatYearMonth(shiftMonth(yearMonth, 1));
   const current = formatYearMonth(yearMonth);
@@ -95,11 +117,12 @@ export default async function CalendarPage({
           <MonthCalendar
             yearMonth={yearMonth}
             events={events}
+            todos={datedTodos}
             selectedKey={selectedKey}
             dayHref={(k) => `/calendar?ym=${current}&day=${k}`}
           />
           <p className="mt-2 text-[11px] text-inkfaint">
-            日付を選ぶとその日の予定が出ます。予定はチーム全員で共有されます。
+            日付を選ぶとその日の予定・ToDoが出ます。予定はチーム全員で共有され、ToDoは自分だけに表示されます。
           </p>
         </section>
 
@@ -149,6 +172,53 @@ export default async function CalendarPage({
                 ))}
               </ul>
             )}
+
+            <div className="mt-5 border-t border-line pt-4">
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <p className="text-xs font-bold text-inksoft">この日が期限のToDo</p>
+                {selectedTodos.length > 0 && (
+                  <span className="text-[11px] text-inkfaint">{selectedTodos.length}件</span>
+                )}
+              </div>
+              <TodoQuickAdd from={from} withDueDate={false} defaultDueDate={selectedKey} />
+              <div className="mt-2">
+                <TodoList
+                  todos={selectedTodos}
+                  from={from}
+                  emptyMessage="この日が期限のToDoはありません。"
+                />
+              </div>
+            </div>
+
+            {/* 期限のないToDoはカレンダーのマスに置けないので、この日の情報の下にまとめて常時表示する。 */}
+            <div className="mt-5 border-t border-line pt-4">
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <p className="text-xs font-bold text-inksoft">期限なしのToDo</p>
+                {openNoDueTodos.length > 0 && (
+                  <span className="text-[11px] text-inkfaint">{openNoDueTodos.length}件</span>
+                )}
+              </div>
+              <TodoQuickAdd from={from} withDueDate={false} />
+              <div className="mt-2">
+                <TodoList
+                  todos={openNoDueTodos}
+                  from={from}
+                  emptyMessage="期限なしのやることはないよ。"
+                />
+              </div>
+
+              {doneNoDueTodos.length > 0 && (
+                <div className="mt-4 border-t border-line pt-3">
+                  <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <p className="text-xs font-bold text-inksoft">終わったこと</p>
+                    <span className="text-[11px] text-inkfaint">{doneNoDueTodos.length}件</span>
+                  </div>
+                  <div className="opacity-80">
+                    <TodoList todos={doneNoDueTodos} from={from} />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {user.teamId && (
               <form

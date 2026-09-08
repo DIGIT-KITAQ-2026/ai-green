@@ -5,9 +5,12 @@ import SubmitButton from "./SubmitButton";
 export default function TodoQuickAdd({
   from,
   withDueDate = true,
+  defaultDueDate,
 }: {
   from: string;
   withDueDate?: boolean;
+  /** カレンダーの選択日から追加するときなど、期限をあらかじめ入れておく。 */
+  defaultDueDate?: string;
 }) {
   return (
     <form action={createTodoAction} className="flex flex-wrap items-center gap-2">
@@ -19,13 +22,16 @@ export default function TodoQuickAdd({
         aria-label="やること"
         className="field-input min-w-0 flex-1 basis-48 py-2 text-sm"
       />
-      {withDueDate && (
+      {withDueDate ? (
         <input
           type="date"
           name="dueDate"
+          defaultValue={defaultDueDate}
           aria-label="期限（任意）"
           className="field-input w-auto shrink-0 py-2 text-sm"
         />
+      ) : (
+        defaultDueDate && <input type="hidden" name="dueDate" value={defaultDueDate} />
       )}
       <SubmitButton
         pendingLabel="追加中…"

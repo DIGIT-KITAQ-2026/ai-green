@@ -14,7 +14,7 @@ export async function createTodoAction(formData: FormData) {
 
   const title = String(formData.get("title") ?? "").trim();
   const due = String(formData.get("dueDate") ?? "").trim();
-  const from = String(formData.get("from") ?? "/todos");
+  const from = String(formData.get("from") ?? "/calendar");
 
   if (!title) redirect(`${from}?error=${encodeURIComponent("やることを入力してください")}`);
 
@@ -28,7 +28,7 @@ export async function createTodoAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/todos");
+  revalidatePath("/calendar");
   revalidatePath("/", "layout");
   redirect(from);
 }
@@ -38,7 +38,7 @@ export async function toggleTodoAction(formData: FormData) {
   if (!user) redirect("/login");
 
   const id = String(formData.get("todoId") ?? "");
-  const from = String(formData.get("from") ?? "/todos");
+  const from = String(formData.get("from") ?? "/calendar");
 
   const todo = id
     ? await prisma.todo.findFirst({ where: { id, userId: user!.id } })
@@ -65,7 +65,7 @@ export async function toggleTodoAction(formData: FormData) {
     });
   }
 
-  revalidatePath("/todos");
+  revalidatePath("/calendar");
   revalidatePath("/", "layout");
   redirect(from);
 }
@@ -75,13 +75,13 @@ export async function deleteTodoAction(formData: FormData) {
   if (!user) redirect("/login");
 
   const id = String(formData.get("todoId") ?? "");
-  const from = String(formData.get("from") ?? "/todos");
+  const from = String(formData.get("from") ?? "/calendar");
 
   if (id) {
     await prisma.todo.deleteMany({ where: { id, userId: user!.id } });
   }
 
-  revalidatePath("/todos");
+  revalidatePath("/calendar");
   revalidatePath("/");
   redirect(from);
 }

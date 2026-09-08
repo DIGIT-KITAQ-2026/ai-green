@@ -28,13 +28,7 @@ const TILES: { href: string; label: string; icon: IconName; note: string }[] = [
     href: "/calendar",
     label: "カレンダー",
     icon: "calendar",
-    note: "チームの予定を見る・登録する",
-  },
-  {
-    href: "/todos",
-    label: "ToDo",
-    icon: "check-list",
-    note: "自分のやることを管理する",
+    note: "チームの予定・自分のToDoを見る・登録する",
   },
   {
     href: "/notes",
@@ -63,7 +57,7 @@ export default async function HomePage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [team, monthEvents, upcoming, openTodos] = await Promise.all([
+  const [team, monthEvents, monthTodos, upcoming, openTodos] = await Promise.all([
     user?.teamId
       ? prisma.team.findUnique({ where: { id: user.teamId } })
       : Promise.resolve(null),
@@ -72,6 +66,13 @@ export default async function HomePage() {
       ? prisma.event.findMany({
           where: { teamId: user.teamId, date: { gte: range.gte, lt: range.lt } },
           orderBy: [{ date: "asc" }, { startTime: "asc" }],
+        })
+      : Promise.resolve([]),
+    // 今月のカレンダーに印を付けるための期限付きToDo。
+    user
+      ? prisma.todo.findMany({
+          where: { userId: user.id, dueDate: { gte: range.gte, lt: range.lt } },
+          orderBy: [{ done: "asc" }, { createdAt: "asc" }],
         })
       : Promise.resolve([]),
     // 今日以降の直近の予定（月をまたいでも拾えるよう別に取る）。
@@ -95,6 +96,11 @@ export default async function HomePage() {
     ? await prisma.todo.count({ where: { userId: user.id, done: false } })
     : 0;
 
+  // where句で絞り込み済みだが、Prisma上の型は Date | null のままなので明示的に絞る。
+  const datedMonthTodos = monthTodos.flatMap((t) =>
+    t.dueDate ? [{ ...t, dueDate: t.dueDate }] : [],
+  );
+
   const info = levelInfo(user?.xp ?? 0);
   const reward = rewardById(user?.selectedRewardId);
 
@@ -114,73 +120,67 @@ export default async function HomePage() {
         ))}
       </div>
 
-      {/* カレンダーとToDoはホームから直接見える・触れるようにする。
-          items-start にして、片方が短いときに無駄な余白が出ないようにしている。 */}
-      <div className="mt-7 grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
-        <section className="card rounded-tile p-5">
-          <div className="mb-3 flex items-baseline justify-between gap-2">
-            <h2 className="section-title">
-              {yearMonth.year}年{yearMonth.month}月の予定
-            </h2>
-            <Link
-              href="/calendar"
-              className="text-xs font-bold text-matcha underline underline-offset-2 hover:text-matcha-deep"
-            >
-              カレンダーを開く
-            </Link>
-          </div>
+      {/* カレンダー(予定・ToDo)はホームから直接見える・触れるようにする。 */}
+      <section className="mt-7 card rounded-tile p-5">
+        <div className="mb-3 flex items-baseline justify-between gap-2">
+          <h2 className="section-title">
+            {yearMonth.year}年{yearMonth.month}月の予定
+          </h2>
+          <Link
+            href="/calendar"
+            className="text-xs font-bold text-matcha underline underline-offset-2 hover:text-matcha-deep"
+          >
+            カレンダーを開く
+          </Link>
+        </div>
 
-          <MonthCalendar yearMonth={yearMonth} events={monthEvents} compact />
+        <MonthCalendar
+          yearMonth={yearMonth}
+          events={monthEvents}
+          todos={datedMonthTodos}
+          compact
+        />
 
-          <div className="mt-4 border-t border-line pt-3">
-            <p className="mb-2 text-xs font-bold text-inkfaint">近日の予定</p>
-            {upcoming.length === 0 ? (
-              <p className="py-2 text-sm text-inkfaint">
-                これからの予定はありません。
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1.5">
-                {upcoming.map((e) => (
-                  <li key={e.id} className="flex items-baseline gap-2.5 text-sm">
-                    <span
-                      className={`shrink-0 text-xs font-bold ${
-                        dateKey(e.date) === dateKey(new Date())
-                          ? "text-red-600"
-                          : "text-matcha"
-                      }`}
-                    >
-                      {UPCOMING_FMT.format(e.date)}
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="mb-2 text-xs font-bold text-inkfaint">近日の予定</p>
+          {upcoming.length === 0 ? (
+            <p className="py-2 text-sm text-inkfaint">
+              これからの予定はありません。
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {upcoming.map((e) => (
+                <li key={e.id} className="flex items-baseline gap-2.5 text-sm">
+                  <span
+                    className={`shrink-0 text-xs font-bold ${
+                      dateKey(e.date) === dateKey(new Date())
+                        ? "text-red-600"
+                        : "text-matcha"
+                    }`}
+                  >
+                    {UPCOMING_FMT.format(e.date)}
+                  </span>
+                  {e.startTime && (
+                    <span className="shrink-0 text-[11px] text-inkfaint">
+                      {e.startTime}
                     </span>
-                    {e.startTime && (
-                      <span className="shrink-0 text-[11px] text-inkfaint">
-                        {e.startTime}
-                      </span>
-                    )}
-                    <span className="min-w-0 truncate">{e.title}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
+                  )}
+                  <span className="min-w-0 truncate">{e.title}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-        <section className="card rounded-tile p-5">
-          <div className="mb-3 flex items-baseline justify-between gap-2">
-            <h2 className="section-title">
-              やること
-              {openTodoCount > 0 && (
-                <span className="ml-2 text-xs font-normal text-inkfaint">
-                  {openTodoCount}件
-                </span>
-              )}
-            </h2>
-            <Link
-              href="/todos"
-              className="text-xs font-bold text-matcha underline underline-offset-2 hover:text-matcha-deep"
-            >
-              ToDoを開く
-            </Link>
-          </div>
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="mb-2 text-xs font-bold text-inkfaint">
+            やること
+            {openTodoCount > 0 && (
+              <span className="ml-2 text-xs font-normal text-inkfaint">
+                {openTodoCount}件
+              </span>
+            )}
+          </p>
 
           <TodoQuickAdd from="/" withDueDate={false} />
 
@@ -195,14 +195,14 @@ export default async function HomePage() {
 
           {openTodoCount > openTodos.length && (
             <Link
-              href="/todos"
+              href="/calendar"
               className="mt-1 block text-center text-xs font-bold text-matcha hover:text-matcha-deep"
             >
               ほか{openTodoCount - openTodos.length}件を見る
             </Link>
           )}
-        </section>
-      </div>
+        </div>
+      </section>
 
       {/* 育成の進み具合。押すとキャラクター画面へ。 */}
       <Link
