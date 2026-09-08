@@ -9,10 +9,12 @@ import { Icon, IconName } from "./IconSprite";
 import LevelUpModal from "./LevelUpModal";
 import { logoutAction } from "@/app/actions/auth";
 
-// チャットが主機能なので先頭に置く。
+// 並び順はホーム画面のタイルと揃えている（片方だけ変えると迷うため）。
+// チャットが主機能なので先頭。設定はタイルに無いので最後に置く。
 const NAV_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/chat", label: "チャット", icon: "chat" },
   { href: "/tasks", label: "業務内容", icon: "book" },
+  { href: "/team-notes", label: "みんなのメモ", icon: "shared-note" },
   { href: "/calendar", label: "カレンダー", icon: "calendar" },
   { href: "/notes", label: "メモ", icon: "note" },
   { href: "/character", label: "キャラクター", icon: "star" },

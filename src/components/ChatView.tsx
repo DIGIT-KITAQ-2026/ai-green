@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { deleteConversationAction } from "@/app/actions/chat";
+import { shareConversationAction } from "@/app/actions/sharedNotes";
+import SubmitButton from "./SubmitButton";
 import ChatPanel from "./ChatPanel";
 import ChatMessage from "./ChatMessage";
 import ConfirmSubmitButton from "./ConfirmSubmitButton";
@@ -37,6 +39,7 @@ export default async function ChatView({
     conversationId
       ? prisma.conversation.findFirst({
           where: { id: conversationId, userId: user.id },
+          include: { sharedNote: { select: { id: true } } },
         })
       : Promise.resolve(null),
     conversationId
@@ -94,6 +97,33 @@ export default async function ChatView({
         </div>
 
         {conversation && (
+          <div className="flex shrink-0 items-center gap-2">
+            {/* この会話をチームのナレッジとして共有するかどうか */}
+            {conversation.sharedNote ? (
+              <Link
+                href="/team-notes"
+                className="rounded-full border border-matcha-line bg-matcha-soft px-3 py-1.5 text-xs font-bold text-matcha-deep transition hover:border-matcha"
+              >
+                みんなのメモに共有済み
+              </Link>
+            ) : (
+              messages.length > 0 && (
+                <form action={shareConversationAction}>
+                  <input type="hidden" name="conversationId" value={conversation.id} />
+                  <input
+                    type="hidden"
+                    name="from"
+                    value={`/chat/${conversation.id}`}
+                  />
+                  <SubmitButton
+                    pendingLabel="要約中…"
+                    className="rounded-full border border-matcha px-3 py-1.5 text-xs font-bold text-matcha-deep transition hover:bg-matcha hover:text-white disabled:opacity-50"
+                  >
+                    みんなのメモに共有
+                  </SubmitButton>
+                </form>
+              )
+            )}
           <form action={deleteConversationAction} className="shrink-0">
             <input type="hidden" name="conversationId" value={conversation.id} />
             <ConfirmSubmitButton
@@ -104,6 +134,7 @@ export default async function ChatView({
               この会話を削除
             </ConfirmSubmitButton>
           </form>
+          </div>
         )}
       </div>
 

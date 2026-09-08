@@ -217,3 +217,55 @@ export async function answerChatQuestion(params: {
       typeof referencedId === "string" && referencedId !== "null" ? referencedId : null,
   };
 }
+
+/**
+ * みんなのメモ: チャットのやり取りを、チームで共有できる短いメモに要約する。
+ *
+ * 元の会話は本人しか見られないため、ここで作る文章だけがチームに渡る。
+ * 「誰が聞いたか」ではなく「何が分かったか」だけを残すよう指示している。
+ */
+export async function summarizeConversationForSharing(params: {
+  messages: { role: string; text: string }[];
+}): Promise<{ title: string; body: string }> {
+  const transcript = params.messages
+    .map((m) => `${m.role === "user" ? "質問" : "回答"}: ${m.text}`)
+    .join("\n");
+
+  const text = await runAgentQuery({
+    systemPrompt:
+      "あなたは新人研修アプリ「新-cha-」の案内役です。指示されたJSON形式だけを出力してください。",
+    content: [
+      {
+        type: "text",
+        text: [
+          "以下は、新人とAIのチャットのやり取りです。",
+          "これをチーム全員が読む共有メモにまとめてください。",
+          "",
+          "【まとめ方】",
+          "・「誰が聞いたか」は書かない。何が分かったかだけを書く。",
+          "・やり取りに出てこない情報を足さない。",
+          "・数字や期限、承認者などの具体的な条件は省略せずに残す。",
+          "・後から読んだ人がそのまま使える、である調の文章にする。",
+          "",
+          "【やり取り】",
+          transcript,
+          "",
+          "次のJSON形式のみで出力してください。説明文やコードブロックは付けないでください。",
+          "{",
+          '  "title": "一覧で見て内容が分かる20文字以内の見出し",',
+          '  "body": "本文。2〜5文程度。長い場合は箇条書きにしてよい"',
+          "}",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const parsed = tryParseJson(text);
+  const title = String(parsed?.title ?? "").trim();
+  const body = String(parsed?.body ?? "").trim();
+
+  return {
+    title: title.slice(0, 60) || "共有メモ",
+    body: body || text.trim() || "(要約を作成できませんでした)",
+  };
+}

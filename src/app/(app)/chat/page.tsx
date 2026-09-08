@@ -28,6 +28,8 @@ export default async function ChatHomePage() {
       orderBy: { updatedAt: "desc" },
       include: {
         _count: { select: { messages: true } },
+        // 「みんなのメモ」に共有済みかどうかを一覧に出す
+        sharedNote: { select: { id: true } },
         // カードに出す「最後のやり取り」の分だけ取る。
         messages: {
           orderBy: { createdAt: "desc" },
@@ -70,6 +72,7 @@ export default async function ChatHomePage() {
     updatedAt: c.updatedAt,
     messageCount: c._count.messages,
     lastMessage: c.messages[0]?.text ?? "",
+    isShared: c.sharedNote !== null,
   }));
 
   const suggestions = recentEntries.map((e) => `${e.title}について教えて`);

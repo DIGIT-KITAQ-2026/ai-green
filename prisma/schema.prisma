@@ -12,9 +12,10 @@ model Team {
   id        String      @id @default(cuid())
   name      String      @unique
   createdAt DateTime    @default(now())
-  users     User[]
-  entries   TaskEntry[]
-  events    Event[]
+  users       User[]
+  entries     TaskEntry[]
+  events      Event[]
+  sharedNotes SharedNote[]
 }
 
 // ユーザー（新人 / 先輩・管理者）
@@ -40,6 +41,7 @@ model User {
   events        Event[]
   todos         Todo[]
   notes         Note[]
+  sharedNotes   SharedNote[]
 }
 
 // チャットの会話（スレッド）。過去の会話を残したまま新しい会話を始められるようにする。
@@ -51,7 +53,8 @@ model Conversation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt // 一覧を新しい順に並べるために使う
 
-  messages ChatMessage[]
+  messages   ChatMessage[]
+  sharedNote SharedNote?
 
   @@index([userId, updatedAt])
 }
@@ -148,4 +151,32 @@ model Note {
   updatedAt DateTime @updatedAt
 
   @@index([userId, updatedAt])
+}
+
+// チャットのやり取りをAIが要約し、チームの共有ナレッジとして残したもの。
+// 個人の Note と違い、同じチームの全員が読める。
+model SharedNote {
+  id    String @id @default(cuid())
+  title String
+  body  String // AIが作った要約（質問と答えを新人にも分かる形にまとめたもの）
+
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  // 退会しても共有ナレッジはチームに残すため、作成者は任意。
+  authorId String?
+  author   User?   @relation(fields: [authorId], references: [id])
+
+  // 元になった会話。同じ会話を二重に共有しないよう一意にしている。
+  // 会話が削除されたら null になり、メモ自体はチームに残る。
+  conversationId String?       @unique
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+
+  // 回答の根拠になった業務内容。読んだ人が原典に当たれるようにする。
+  referencedTaskEntryId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId, createdAt])
 }

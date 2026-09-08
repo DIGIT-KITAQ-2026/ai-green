@@ -74,6 +74,12 @@ export default function IconSprite() {
           <path d="M14.5 3.5V8H19" />
           <path d="M9 12h6M9 15.5h6" />
         </symbol>
+        <symbol id="ic-shared-note" viewBox="0 0 24 24">
+          <path d="M5.5 4.5h8L18 9v10.5h-12.5z" />
+          <path d="M13 4.5V9h4.5" />
+          <circle cx="10" cy="13" r="1.6" />
+          <path d="M7.2 17.2c0-1.5 1.3-2.4 2.8-2.4s2.8.9 2.8 2.4" />
+        </symbol>
         <symbol id="ic-star" viewBox="0 0 24 24">
           <path d="M12 4.2l2.3 4.9 5.2.7-3.8 3.7.9 5.3-4.6-2.5-4.6 2.5.9-5.3L4.5 9.8l5.2-.7z" />
         </symbol>
@@ -99,6 +105,7 @@ const ICON_IDS = [
   "calendar",
   "check-list",
   "note",
+  "shared-note",
   "star",
   "back",
   "drop",

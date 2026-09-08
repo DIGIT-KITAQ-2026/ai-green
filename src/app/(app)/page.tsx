@@ -24,7 +24,13 @@ const TILES: { href: string; label: string; icon: IconName; note: string }[] = [
     icon: "book",
     note: "登録された業務を見る・新しい業務を伝える",
   },
-  {
+    {
+    href: "/team-notes",
+    label: "みんなのメモ",
+    icon: "shared-note",
+    note: "チャットで分かったことをチームで共有する",
+  },
+{
     href: "/calendar",
     label: "カレンダー",
     icon: "calendar",

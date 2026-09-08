@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { deleteConversationAction } from "@/app/actions/chat";
+import { shareConversationAction } from "@/app/actions/sharedNotes";
+import SubmitButton from "./SubmitButton";
 import { conversationStamp as stamp } from "@/lib/chatFormat";
 import ConfirmSubmitButton from "./ConfirmSubmitButton";
 
@@ -10,14 +12,17 @@ export type ConversationSummary = {
   messageCount: number;
   /** 一覧で中身を思い出せるように、最後のやり取りを少しだけ見せる。 */
   lastMessage: string;
+  /** すでに「みんなのメモ」へ共有済みか。 */
+  isShared: boolean;
 };
 
 /**
  * チャットのホーム画面に並べる、過去の会話のカード一覧。
  * 選ぶとその会話を開いて続きから話せる。右上の × でその場から削除もできる。
+ * カード下部から、その会話を「みんなのメモ」としてチームに共有できる。
  *
- * 削除ボタンはカードのリンクの中に置けない（aの中にformは入れられない）ので、
- * 兄弟要素として重ねている。
+ * 操作ボタンはカードのリンクの中に置けない（aの中にformは入れられない）ので、
+ * 兄弟要素として並べている。
  */
 export default function ConversationList({
   conversations,
@@ -37,10 +42,12 @@ export default function ConversationList({
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {conversations.map((c) => (
-        <li key={c.id} className="relative">
+        // li を縦並びにする。リンクに h-full を指定すると、下の操作ボタンの上まで
+        // 伸びてクリックを奪ってしまうため、flex-1 で余りだけを占めさせる。
+        <li key={c.id} className="relative flex flex-col">
           <Link
             href={`/chat/${c.id}`}
-            className="flex h-full flex-col gap-2 rounded-tile border border-line bg-surface p-4 pr-11 transition hover:-translate-y-0.5 hover:border-matcha hover:shadow-lift"
+            className="flex flex-1 flex-col gap-2 rounded-tile border border-line bg-surface p-4 pr-11 transition hover:-translate-y-0.5 hover:border-matcha hover:shadow-lift"
           >
             <p className="line-clamp-2 font-bold leading-snug text-ink">
               {c.title}
@@ -52,6 +59,29 @@ export default function ConversationList({
               {stamp(c.updatedAt)} ・ {c.messageCount}件のやりとり
             </p>
           </Link>
+
+          {/* この会話をチームのナレッジとして共有するかどうか */}
+          <div className="mt-2 flex items-center justify-end">
+            {c.isShared ? (
+              <Link
+                href="/team-notes"
+                className="rounded-full border border-matcha-line bg-matcha-soft px-3 py-1 text-[11px] font-bold text-matcha-deep transition hover:border-matcha"
+              >
+                みんなのメモに共有済み
+              </Link>
+            ) : (
+              <form action={shareConversationAction}>
+                <input type="hidden" name="conversationId" value={c.id} />
+                <input type="hidden" name="from" value="/chat" />
+                <SubmitButton
+                  pendingLabel="要約中…"
+                  className="rounded-full border border-matcha px-3 py-1 text-[11px] font-bold text-matcha-deep transition hover:bg-matcha hover:text-white disabled:opacity-50"
+                >
+                  みんなのメモに共有
+                </SubmitButton>
+              </form>
+            )}
+          </div>
 
           <form action={deleteConversationAction} className="absolute right-2 top-2">
             <input type="hidden" name="conversationId" value={c.id} />
