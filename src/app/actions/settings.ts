@@ -197,6 +197,9 @@ export async function deleteAccountAction(formData: FormData) {
     await tx.conversation.deleteMany({ where: { userId } });
     await tx.todo.deleteMany({ where: { userId } });
     await tx.note.deleteMany({ where: { userId } });
+    // みんなのメモへのいいね・非表示は本人だけのものなので一緒に消す。
+    await tx.sharedNoteLike.deleteMany({ where: { userId } });
+    await tx.sharedNoteHide.deleteMany({ where: { userId } });
 
     // 2. チームで共有しているものは消さず、登録者だけ外す
     await tx.taskEntry.updateMany({

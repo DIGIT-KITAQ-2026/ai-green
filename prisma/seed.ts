@@ -2,7 +2,12 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import fs from "fs";
 import path from "path";
-import { XP_RULES } from "../src/lib/rewards";
+/**
+ * デモ先輩の初期経験値。Lv8（ぎょくろ様まで解放）に届く値にしてある。
+ * デモでコレクションが全部埋まった状態を見せるための値で、
+ * 加点ルールとは関係がない。
+ */
+const DEMO_XP = 970;
 
 const prisma = new PrismaClient();
 
@@ -60,6 +65,9 @@ async function main() {
         name: "デモ先輩",
         role: "admin",
         teamId: defaultTeam.id,
+        // デモで全キャラクターを見せられるように、使い込んだ状態の経験値を持たせる。
+        // 加点ルールで貯めた分ではなく、あくまでデモ用の初期値。
+        xp: DEMO_XP,
       },
     });
     console.log(`Seeded demo account: ${demoLoginId} / password123`);
@@ -135,16 +143,12 @@ async function seedTaskEntries() {
     created++;
   }
 
-  if (created > 0) {
-    // アプリと同じルールで、登録した分の経験値を登録者に付ける。
-    await prisma.user.update({
-      where: { id: author.id },
-      data: { xp: { increment: created * XP_RULES.entryCreated } },
-    });
-    console.log(`Seeded ${created} demo task entries (+${created * XP_RULES.entryCreated} XP).`);
-  } else {
-    console.log("Demo task entries already present — nothing to add.");
-  }
+  // 業務内容の登録には経験値を付けない（アプリ側の加点対象から外したため）。
+  console.log(
+    created > 0
+      ? `Seeded ${created} demo task entries.`
+      : "Demo task entries already present — nothing to add.",
+  );
 }
 
 /**

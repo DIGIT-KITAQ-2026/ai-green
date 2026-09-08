@@ -6,25 +6,57 @@
  * （会話を消しても、消化したToDoを戻しても、経験値は減らない）。
  */
 
-/** 行動ごとの獲得経験値。 */
+/**
+ * 行動ごとの獲得経験値。
+ *
+ * 基準は2つ。
+ *
+ * ひとつは「誰でも同じ手段で貯められること」。業務内容の登録はもともと +25 だったが、
+ * 登録できるのは先輩・管理者だけで、新人には手が届かない加点だったため外した。
+ *
+ * もうひとつは「経験値が判断をゆがめないこと」。みんなのメモへの共有にも一度 +30 を
+ * 付けたが、それでは『共有すべきかどうか』の判断に点数が混ざり、点のために薄いメモを
+ * 出す動機になってしまうため外した。共有そのものではなく、共有したメモが実際に
+ * 他の人の役に立ったとき（いいねが付いたとき）だけ加点する。
+ */
 export const XP_RULES = {
-  /** チャットで質問する */
-  question: 10,
-  /** ToDoを完了する（1件につき1回だけ） */
+  /** チャットで質問する（1日 QUESTION_DAILY_LIMIT 問まで） */
+  question: 5,
+  /** ToDoを完了する（1件につき1回だけ・1日 TODO_DAILY_LIMIT 件まで） */
   todoDone: 15,
-  /** 業務内容を登録する（みんなの役に立つので多め） */
-  entryCreated: 25,
+  /** 自分のメモに他の人からいいねが付く（押した側ではなく、書いた側に入る） */
+  noteLikeReceived: 10,
 } as const;
 
+/**
+ * 1日に経験値がつく質問の数。
+ * 質問は毎回AIを呼ぶので、連打してレベルを上げる形にはしたくない。
+ * 上限を超えても質問自体はできる（経験値がつかないだけ）。
+ */
+export const QUESTION_DAILY_LIMIT = 4;
+
+/**
+ * 1日に経験値がつくToDoの数。
+ * ToDoは自分で作って自分で消化できるので、上限が無いといちばん手軽な稼ぎ口になる。
+ * 上限を超えてもToDo自体は使える（経験値がつかないだけ）。
+ */
+export const TODO_DAILY_LIMIT = 5;
+
 export const XP_RULE_LABELS: { label: string; xp: number }[] = [
-  { label: "チャットで質問する", xp: XP_RULES.question },
-  { label: "ToDoを1つ終わらせる", xp: XP_RULES.todoDone },
-  { label: "業務内容を登録する", xp: XP_RULES.entryCreated },
+  { label: `チャットで質問する（1日${QUESTION_DAILY_LIMIT}問まで）`, xp: XP_RULES.question },
+  { label: `ToDoを1つ終わらせる（1日${TODO_DAILY_LIMIT}件まで）`, xp: XP_RULES.todoDone },
+  { label: "自分のメモにいいねが付く", xp: XP_RULES.noteLikeReceived },
 ];
 
-/** レベル L から L+1 に上がるのに必要な経験値。 */
+/**
+ * レベル L から L+1 に上がるのに必要な経験値。
+ *
+ * もとは 50+30(L-1) だったが、序盤が重く、最初のキャラクターに会うまでが
+ * 遠かったため前半をゆるめた。Lv10 までの合計は 1530 で変えていないので、
+ * どのレベルも以前より必要量が減るか同じになる（既存ユーザーのレベルは下がらない）。
+ */
 function stepFor(level: number): number {
-  return 50 + 30 * (level - 1);
+  return 30 + 35 * (level - 1);
 }
 
 const MAX_LEVEL = 10;
@@ -71,7 +103,6 @@ export function levelInfo(totalXp: number): LevelInfo {
 export type Reward = {
   id: string;
   name: string;
-  kind: "character" | "costume";
   requiredLevel: number;
   description: string;
   /** イラストが用意できるまでの見分け用に、丸の背景色を変えている。 */
@@ -92,14 +123,13 @@ export type Reward = {
 };
 
 /**
- * もらえるキャラクター・着せ替えの一覧。お茶にちなんだ名前で揃えている。
+ * もらえるキャラクターの一覧。お茶にちなんだ名前で揃えている。
  * イラストが増えたら image を足すだけで反映される。
  */
 export const REWARDS: Reward[] = [
   {
     id: "default",
     name: "しんちゃ",
-    kind: "character",
     requiredLevel: 1,
     description: "はじめからいっしょにいる、湯呑みの中の案内役。",
     accent: "#FFFFFF",
@@ -109,9 +139,8 @@ export const REWARDS: Reward[] = [
   {
     id: "sakura",
     name: "さくらしんちゃ",
-    kind: "costume",
     requiredLevel: 2,
-    description: "桜の髪飾りをつけた春の装い。はじめての着せ替え。",
+    description: "桜の髪飾りをつけた春の装い。はじめてもらえる仲間。",
     accent: "#FBE4EC",
     image: "/sakura-shincha.png",
     voice:
@@ -120,7 +149,6 @@ export const REWARDS: Reward[] = [
   {
     id: "latte",
     name: "ラテしんちゃ",
-    kind: "costume",
     requiredLevel: 3,
     description: "ラテアートになった軽やかな装い。",
     accent: "#F5E7D0",
@@ -131,7 +159,6 @@ export const REWARDS: Reward[] = [
   {
     id: "hojicha",
     name: "ほうじ茶先輩",
-    kind: "character",
     requiredLevel: 4,
     description: "新人教育を担当する先輩。落ち着いて筋道立てて教えてくれる。",
     accent: "#E4D3BE",
@@ -141,8 +168,7 @@ export const REWARDS: Reward[] = [
   },
   {
     id: "sencha",
-    name: "せんちゃ仙人",
-    kind: "character",
+    name: "せんちゃ",
     requiredLevel: 6,
     description: "茶碗の中に住む仙人。ゆったり構えて要点を説いてくれる。",
     accent: "#DCE9CE",
@@ -152,8 +178,7 @@ export const REWARDS: Reward[] = [
   },
   {
     id: "gyokuro",
-    name: "玉露様",
-    kind: "character",
+    name: "ぎょくろ様",
     requiredLevel: 8,
     description: "めったに現れない玉露。切れ味よく言い切ってくれる。",
     accent: "#FBF0C9",

@@ -16,7 +16,7 @@ export default function Mascot({
   circle?: boolean;
   priority?: boolean;
   className?: string;
-  /** 選択中のキャラクター／着せ替えの色。円の背景に使う。 */
+  /** 選択中のキャラクターの色。円の背景に使う。 */
   accent?: string;
   /** 専用イラストがあるときの画像パス。未指定なら既定のマスコット。 */
   src?: string;

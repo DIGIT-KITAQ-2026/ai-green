@@ -5,7 +5,9 @@ import { prisma } from "@/lib/db";
 import {
   updateSharedNoteAction,
   deleteSharedNoteAction,
+  toggleSharedNoteLikeAction,
 } from "@/app/actions/sharedNotes";
+import { buildTeamColorMap, DEFAULT_TEAM_COLOR } from "@/lib/teamColors";
 import { Icon } from "@/components/IconSprite";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
@@ -42,18 +44,37 @@ export default async function SharedNoteDetailPage({
   });
   if (!note) notFound();
 
-  const entry = note.referencedTaskEntryId
-    ? await prisma.taskEntry.findUnique({
-        where: { id: note.referencedTaskEntryId },
-        select: { id: true, title: true },
-      })
-    : null;
+  const [entry, teams, likeCount, myLike] = await Promise.all([
+    note.referencedTaskEntryId
+      ? prisma.taskEntry.findUnique({
+          where: { id: note.referencedTaskEntryId },
+          select: { id: true, title: true, teamId: true, team: { select: { name: true } } },
+        })
+      : Promise.resolve(null),
+    // 色は業務内容と同じ割り当てにするため、作成順で取る。
+    prisma.team.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.sharedNoteLike.count({ where: { noteId: note.id } }),
+    prisma.sharedNoteLike.findUnique({
+      where: { noteId_userId: { noteId: note.id, userId: user.id } },
+    }),
+  ]);
+
+  // メモ自体のチームではなく、もとの資料の部門の色を使う（業務内容の色と揃える）。
+  const color =
+    (entry && buildTeamColorMap(teams.map((t) => t.id)).get(entry.teamId)) ??
+    DEFAULT_TEAM_COLOR;
 
   const canEdit = note.authorId === user.id || user.role === "admin";
   const author = note.author?.name ?? "退会したユーザー";
 
   return (
     <div className="max-w-3xl">
+      {/* 部門の色。業務内容のフォルダと同じ色にしている。 */}
+      <div
+        className="mb-4 h-1.5 w-full rounded-full"
+        style={{ backgroundColor: color.body }}
+      />
+
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
         <Link
           href="/team-notes"
@@ -63,6 +84,14 @@ export default async function SharedNoteDetailPage({
           みんなのメモ
         </Link>
         <p className="text-[11px] text-inkfaint">
+          {entry && (
+            <span
+              className="mr-2 rounded-full px-2 py-0.5 text-[10px] font-bold text-ink/75"
+              style={{ backgroundColor: color.body }}
+            >
+              {entry.team.name}
+            </span>
+          )}
           {author}さんが共有 ・ {FMT.format(note.createdAt)}
           {note.editedAt && ` ／ ${FMT.format(note.editedAt)}に編集`}
         </p>
@@ -120,6 +149,28 @@ export default async function SharedNoteDetailPage({
           </p>
         </>
       )}
+
+      <div className="mt-7 border-t border-line pt-5">
+        <form action={toggleSharedNoteLikeAction}>
+          <input type="hidden" name="noteId" value={note.id} />
+          <input type="hidden" name="from" value={`/team-notes/${note.id}`} />
+          <SubmitButton
+            pendingLabel="…"
+            className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold transition disabled:opacity-50 ${
+              myLike
+                ? "border-matcha bg-matcha text-white"
+                : "border-line text-inksoft hover:border-matcha hover:text-matcha"
+            }`}
+          >
+            <span aria-hidden="true">{myLike ? "♥" : "♡"}</span>
+            <span>役に立った</span>
+            <span className="tabular-nums">{likeCount}</span>
+          </SubmitButton>
+        </form>
+        <p className="mt-2 text-[11px] text-inkfaint">
+          押した人の名前は誰にも表示されません。多く押されたメモが一覧の上に並びます。
+        </p>
+      </div>
 
       {note.sourceQuestions && (
         <div className="mt-7 border-t border-line pt-5">

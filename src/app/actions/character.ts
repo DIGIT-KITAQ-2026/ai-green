@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { REWARDS, isUnlocked, levelInfo } from "@/lib/rewards";
 
 /**
- * 使うキャラクター／着せ替えを切り替える。
+ * 使うキャラクターを切り替える。
  * まだ解放していないものは選べないよう、サーバー側でもレベルを確認する。
  */
 export async function selectRewardAction(formData: FormData) {

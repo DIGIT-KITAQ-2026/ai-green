@@ -29,10 +29,14 @@ export default async function CharacterPage({
   const greetName = user.name;
 
   // 何をどれだけやったかを出して、次に何をすれば伸びるか分かるようにする。
-  const [questions, todosDone, entries] = await Promise.all([
+  // 並びは「経験値の貯まりかた」と同じにしてある。
+  const [questions, todosDone, likesReceived] = await Promise.all([
     prisma.chatMessage.count({ where: { userId: user.id, role: "user" } }),
     prisma.todo.count({ where: { userId: user.id, done: true } }),
-    prisma.taskEntry.count({ where: { createdById: user.id } }),
+    // 自分のメモに他の人から付いたいいねの数（自分で押した分は数えない）。
+    prisma.sharedNoteLike.count({
+      where: { note: { authorId: user.id }, userId: { not: user.id } },
+    }),
   ]);
 
   const unlockedCount = REWARDS.filter((r) => isUnlocked(r, info.level)).length;
@@ -115,6 +119,8 @@ export default async function CharacterPage({
           </ul>
           <p className="mt-3 text-[11px] leading-relaxed text-inkfaint">
             一度もらった経験値は減りません。ToDoは1件につき1回だけ加算されます。
+            みんなのメモは、共有しただけでは増えません。読んだ人の役に立ったときだけ、
+            そのメモを書いた人に入ります（押した人と、自分で押した分は入りません）。
           </p>
         </div>
 
@@ -124,7 +130,7 @@ export default async function CharacterPage({
             {[
               { label: "質問した", value: questions },
               { label: "ToDo完了", value: todosDone },
-              { label: "業務を登録", value: entries },
+              { label: "もらったいいね", value: likesReceived },
             ].map((s) => (
               <div key={s.label} className="rounded-xl bg-matcha-soft px-2 py-4">
                 <dd className="font-display text-2xl font-black text-matcha-deep">
@@ -166,9 +172,6 @@ export default async function CharacterPage({
                   </div>
 
                   <p className="text-sm font-bold leading-snug text-ink">{r.name}</p>
-                  <p className="text-[10px] text-inkfaint">
-                    {r.kind === "costume" ? "着せ替え" : "キャラクター"}
-                  </p>
 
                   {unlocked ? (
                     <>

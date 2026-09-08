@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { XP_RULES } from "@/lib/rewards";
+import { XP_RULES, TODO_DAILY_LIMIT } from "@/lib/rewards";
 
 /** ToDoはユーザーごとのものなので、必ず userId とセットで絞り込む。 */
 
@@ -46,19 +46,32 @@ export async function toggleTodoAction(formData: FormData) {
   if (!todo) redirect(from);
 
   const willBeDone = !todo!.done;
+
   // 経験値は初めて完了したときだけ。チェックを外して付け直しても増えない。
-  const shouldAwardXp = willBeDone && !todo!.xpAwarded;
+  // さらに1日 TODO_DAILY_LIMIT 件まで。ToDoは自分で作って自分で消化できるので、
+  // 上限が無いといちばん手軽な稼ぎ口になってしまう。
+  let awardXp = willBeDone && !todo!.xpAwardedAt;
+  if (awardXp) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const awardedToday = await prisma.todo.count({
+      where: { userId: user!.id, xpAwardedAt: { gte: startOfToday } },
+    });
+    // 上限に達した分は「まだ付けていない」ままにしておく。
+    // その日の枠を使い切っただけなので、後日また対象になる。
+    awardXp = awardedToday < TODO_DAILY_LIMIT;
+  }
 
   await prisma.todo.update({
     where: { id: todo!.id },
     data: {
       done: willBeDone,
       completedAt: willBeDone ? new Date() : null,
-      ...(shouldAwardXp ? { xpAwarded: true } : {}),
+      ...(awardXp ? { xpAwardedAt: new Date() } : {}),
     },
   });
 
-  if (shouldAwardXp) {
+  if (awardXp) {
     await prisma.user.update({
       where: { id: user!.id },
       data: { xp: { increment: XP_RULES.todoDone } },

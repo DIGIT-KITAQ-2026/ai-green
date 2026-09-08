@@ -6,7 +6,6 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseUploadedFiles, UploadValidationError } from "@/lib/uploads";
 import { analyzeRegistration } from "@/lib/claudeAgent";
-import { XP_RULES } from "@/lib/rewards";
 
 /**
  * 業務内容の登録画面。
@@ -89,11 +88,8 @@ export async function createTaskEntryAction(formData: FormData) {
     },
   });
 
-  await prisma.user.update({
-    where: { id: user!.id },
-    data: { xp: { increment: XP_RULES.entryCreated } },
-  });
-
+  // 登録には経験値を付けない。登録できるのは先輩・管理者だけで、
+  // 新人には手が届かない加点になってしまうため。
   revalidatePath("/", "layout");
   redirect(listPath);
 }

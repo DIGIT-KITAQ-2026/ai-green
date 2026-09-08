@@ -51,6 +51,8 @@ model User {
   todos         Todo[]
   notes         Note[]
   sharedNotes   SharedNote[]
+  noteLikes     SharedNoteLike[]
+  noteHides     SharedNoteHide[]
 }
 
 // チャットの会話（スレッド）。過去の会話を残したまま新しい会話を始められるようにする。
@@ -140,8 +142,9 @@ model Todo {
   dueDate     DateTime? // 期限（任意）
   done        Boolean   @default(false)
   completedAt DateTime?
-  // 経験値は最初に完了したとき1回だけ付ける（チェックし直しで増えないように）。
-  xpAwarded   Boolean   @default(false)
+  // 経験値を付けた日時。最初に完了したとき1回だけ付ける（チェックし直しで増えない）。
+  // 1日に何件まで加算したかを数えるのに使うので、真偽値ではなく日時で持つ。
+  xpAwardedAt DateTime?
   userId      String
   user        User      @relation(fields: [userId], references: [id])
   createdAt   DateTime  @default(now())
@@ -176,6 +179,11 @@ model SharedNote {
   authorId String?
   author   User?   @relation(fields: [authorId], references: [id])
 
+  // これまでに経験値を渡した「他人からのいいね」の数。
+  // ここまでの分は渡し済みとして、増えた差分だけ書いた人に加算する。
+  // いいねを外しても減らさない（＝押し直しで二重に稼げない）。
+  xpAwardedLikes Int @default(0)
+
   // 元になった会話。同じ会話を二重に共有しないよう一意にしている。
   // 会話が削除されたら null になり、メモ自体はチームに残る。
   conversationId String?       @unique
@@ -194,5 +202,37 @@ model SharedNote {
   // 人が手を入れたかどうか。AIの要約そのままか、誰かが直したものかを読む側に示す。
   editedAt  DateTime?
 
+  likes SharedNoteLike[]
+  hides SharedNoteHide[]
+
   @@index([teamId, createdAt])
+}
+
+// みんなのメモへの「いいね」。多いものが上に並ぶ。
+// 誰が押したかは画面に一切出さない（匿名）。ユーザーIDを持つのは、
+// 二重に押せないようにするためと、押し直しで取り消せるようにするため。
+model SharedNoteLike {
+  id        String     @id @default(cuid())
+  noteId    String
+  note      SharedNote @relation(fields: [noteId], references: [id])
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  createdAt DateTime   @default(now())
+
+  @@unique([noteId, userId])
+  @@index([noteId])
+}
+
+// 自分には必要ないと判断したメモを、自分の画面でだけ下げるための記録。
+// チームの共有物そのものは消さず、見え方だけを個人ごとに変える。
+model SharedNoteHide {
+  id        String     @id @default(cuid())
+  noteId    String
+  note      SharedNote @relation(fields: [noteId], references: [id])
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  createdAt DateTime   @default(now())
+
+  @@unique([noteId, userId])
+  @@index([userId])
 }

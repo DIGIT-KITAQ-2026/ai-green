@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { parseUploadedFiles, UploadValidationError } from "@/lib/uploads";
 import { answerChatQuestion } from "@/lib/claudeAgent";
 import { rankEntriesByQuery, type SearchHint } from "@/lib/retrieval";
-import { XP_RULES, rewardById } from "@/lib/rewards";
+import { XP_RULES, QUESTION_DAILY_LIMIT, rewardById } from "@/lib/rewards";
 
 /** AIに渡す過去のやり取りの上限。長くなりすぎないよう直近のみを見せる。 */
 const HISTORY_LIMIT = 10;
@@ -96,10 +96,19 @@ export async function sendChatMessageAction(formData: FormData) {
   });
 
   // 質問したこと自体に経験値を付ける（回答の成否には左右させない）。
-  await prisma.user.update({
-    where: { id: user!.id },
-    data: { xp: { increment: XP_RULES.question } },
+  // ただし1日 QUESTION_DAILY_LIMIT 問まで。質問は毎回AIを呼ぶので、
+  // 連打でレベルを上げる形にはしない（上限を超えても質問自体はできる）。
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const askedToday = await prisma.chatMessage.count({
+    where: { userId: user!.id, role: "user", createdAt: { gte: startOfToday } },
   });
+  if (askedToday <= QUESTION_DAILY_LIMIT) {
+    await prisma.user.update({
+      where: { id: user!.id },
+      data: { xp: { increment: XP_RULES.question } },
+    });
+  }
   revalidatePath("/", "layout");
 
   const allEntries = await prisma.taskEntry.findMany({
