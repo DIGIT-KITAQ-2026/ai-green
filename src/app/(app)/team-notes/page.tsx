@@ -67,7 +67,8 @@ export default async function TeamNotesPage({
         <Link href="/chat" className="font-bold text-matcha underline underline-offset-2">
           チャット
         </Link>
-        」画面で共有できます。
+        」画面で共有できます。AIがまとめた文章なので、
+        内容に誤りがあれば書いた本人と先輩・管理者が直せます。
       </p>
 
       {notes.length === 0 ? (
@@ -89,7 +90,8 @@ export default async function TeamNotesPage({
               ? entryMap.get(n.referencedTaskEntryId)
               : null;
             const author = n.author?.nickname ?? n.author?.name ?? "退会したユーザー";
-            const canDelete = n.authorId === user.id || user.role === "admin";
+            // 直すのも消すのも、書いた本人と先輩・管理者だけ
+            const canEdit = n.authorId === user.id || user.role === "admin";
 
             return (
               <li
@@ -97,10 +99,15 @@ export default async function TeamNotesPage({
                 className="flex flex-col gap-3 rounded-tile border border-line bg-surface p-5"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="font-display text-base font-black leading-snug text-ink">
-                    {n.title}
+                  <h2 className="font-display text-base font-black leading-snug">
+                    <Link
+                      href={`/team-notes/${n.id}`}
+                      className="text-ink transition hover:text-matcha"
+                    >
+                      {n.title}
+                    </Link>
                   </h2>
-                  {canDelete && (
+                  {canEdit && (
                     <form action={deleteSharedNoteAction} className="shrink-0">
                       <input type="hidden" name="noteId" value={n.id} />
                       <input type="hidden" name="from" value="/team-notes" />
@@ -129,9 +136,20 @@ export default async function TeamNotesPage({
                   </Link>
                 )}
 
-                <p className="text-[11px] text-inkfaint">
-                  {author}さんが共有 ・ {FMT.format(n.createdAt)}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] text-inkfaint">
+                    {author}さんが共有 ・ {FMT.format(n.createdAt)}
+                    {n.editedAt && " ・ 編集済み"}
+                  </p>
+                  {canEdit && (
+                    <Link
+                      href={`/team-notes/${n.id}`}
+                      className="text-[11px] font-bold text-matcha underline underline-offset-2 hover:text-matcha-deep"
+                    >
+                      直す
+                    </Link>
+                  )}
+                </div>
               </li>
             );
           })}

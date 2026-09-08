@@ -175,8 +175,15 @@ model SharedNote {
   // 回答の根拠になった業務内容。読んだ人が原典に当たれるようにする。
   referencedTaskEntryId String?
 
+  // もとになった質問文。要約は「である調」に整うため、新人が実際に使った言葉が
+  // 本文に残らない。チャットの検索で「その言い方をした人は、この資料に辿り着いた」
+  // という手がかりに使うため、質問文だけ別に持っておく。
+  sourceQuestions String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // 人が手を入れたかどうか。AIの要約そのままか、誰かが直したものかを読む側に示す。
+  editedAt  DateTime?
 
   @@index([teamId, createdAt])
 }

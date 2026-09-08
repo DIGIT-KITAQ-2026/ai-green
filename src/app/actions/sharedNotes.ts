@@ -53,6 +53,13 @@ export async function shareConversationAction(formData: FormData) {
     .map((m) => m.referencedTaskEntryId)
     .filter((id): id is string => Boolean(id));
 
+  // 新人が実際に使った言葉を、チャットの検索の手がかりとして残す。
+  // 要約は「である調」に整うため、この言い回しは本文には残らない。
+  const sourceQuestions = conversation!.messages
+    .filter((m) => m.role === "user" && m.text.trim())
+    .map((m) => m.text.trim())
+    .join("\n");
+
   await prisma.sharedNote.create({
     data: {
       title: summary!.title,
@@ -61,12 +68,48 @@ export async function shareConversationAction(formData: FormData) {
       authorId: user!.id,
       conversationId: conversation!.id,
       referencedTaskEntryId: referenced[referenced.length - 1] ?? null,
+      sourceQuestions: sourceQuestions || null,
     },
   });
 
   revalidatePath("/team-notes");
   revalidatePath("/chat");
   redirect("/team-notes?shared=1");
+}
+
+/**
+ * 共有メモを直す。AIの要約が間違っていたときに、消さずに直せるようにするためのもの。
+ * 直せるのは書いた本人と、先輩・管理者（誤った内容がチームに残り続けないように）。
+ */
+export async function updateSharedNoteAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const id = String(formData.get("noteId") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+
+  const note = id
+    ? await prisma.sharedNote.findFirst({ where: { id, teamId: user!.teamId ?? undefined } })
+    : null;
+  if (!note) redirect("/team-notes");
+
+  const backTo = `/team-notes/${note!.id}`;
+  if (note!.authorId !== user!.id && user!.role !== "admin") {
+    redirect(`${backTo}?error=${encodeURIComponent("このメモを直せるのは、書いた本人と先輩・管理者だけです")}`);
+  }
+  if (!title || !body) {
+    redirect(`${backTo}?error=${encodeURIComponent("見出しと本文を入力してください")}`);
+  }
+
+  await prisma.sharedNote.update({
+    where: { id: note!.id },
+    data: { title: title.slice(0, 60), body, editedAt: new Date() },
+  });
+
+  revalidatePath("/team-notes");
+  revalidatePath(backTo);
+  redirect(`${backTo}?saved=1`);
 }
 
 /**
