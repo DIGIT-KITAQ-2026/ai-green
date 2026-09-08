@@ -29,7 +29,7 @@ export async function createTodoAction(formData: FormData) {
   });
 
   revalidatePath("/calendar");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   redirect(from);
 }
 
@@ -66,7 +66,7 @@ export async function toggleTodoAction(formData: FormData) {
   }
 
   revalidatePath("/calendar");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   redirect(from);
 }
 

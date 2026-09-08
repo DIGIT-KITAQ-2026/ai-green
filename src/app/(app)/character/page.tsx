@@ -206,14 +206,6 @@ export default async function CharacterPage({
             );
           })}
         </ul>
-
-        <p className="mt-4 text-[11px] leading-relaxed text-inkfaint">
-          いまは色ちがいで表示しています。専用イラストが用意でき次第、
-          <code className="mx-1 rounded bg-surface2 px-1.5 py-0.5 font-mono">
-            src/lib/rewards.ts
-          </code>
-          の各項目に画像パスを足すだけで差し替わります。
-        </p>
       </section>
     </div>
   );

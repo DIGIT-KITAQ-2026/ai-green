@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -93,6 +94,7 @@ export async function createTaskEntryAction(formData: FormData) {
     data: { xp: { increment: XP_RULES.entryCreated } },
   });
 
+  revalidatePath("/", "layout");
   redirect(listPath);
 }
 
