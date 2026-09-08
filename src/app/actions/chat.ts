@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { parseUploadedFiles, UploadValidationError } from "@/lib/uploads";
 import { answerChatQuestion } from "@/lib/claudeAgent";
 import { rankEntriesByQuery, type SearchHint } from "@/lib/retrieval";
-import { XP_RULES } from "@/lib/rewards";
+import { XP_RULES, rewardById } from "@/lib/rewards";
 
 /** AIに渡す過去のやり取りの上限。長くなりすぎないよう直近のみを見せる。 */
 const HISTORY_LIMIT = 10;
@@ -150,6 +150,9 @@ export async function sendChatMessageAction(formData: FormData) {
         summary: c.summary,
         teamName: c.team.name,
       })),
+      // 選んでいるキャラクターの話し方。変わるのは口調だけで、
+      // 答える内容や詳しさはキャラクターによらず同じになるようにしている。
+      voice: rewardById(user!.selectedRewardId).voice,
     });
     answerText = result.answer;
     referencedId = result.referencedTaskEntryId;

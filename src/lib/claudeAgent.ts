@@ -116,7 +116,7 @@ export async function analyzeRegistration(params: {
 
   const text = await runAgentQuery({
     systemPrompt:
-      "あなたは新人研修アプリ「新-cha-」の業務内容登録を手伝うアシスタントです。指示されたJSON形式だけを出力してください。",
+      "あなたは、総務・人事・経理・法務といったコーポレート部門の新人を支援するアプリ「新-cha-」で、業務内容の登録を手伝うアシスタントです。社内規程や手続きの資料を扱うため、期限・金額・承認者などの条件は省略せずに書き起こしてください。指示されたJSON形式だけを出力してください。",
     content,
   });
 
@@ -137,6 +137,10 @@ export type CandidateEntry = {
   teamName: string;
 };
 
+/** キャラクター未選択のときの話し方。 */
+const DEFAULT_VOICE =
+  "一人称は「ぼく」。「〜だよ」「〜してね」のやわらかい常体で、明るく親しみやすく話す。";
+
 export type HistoryTurn = {
   role: "user" | "assistant";
   text: string;
@@ -154,6 +158,8 @@ export async function answerChatQuestion(params: {
   files: UploadedFile[];
   candidates: CandidateEntry[];
   history?: HistoryTurn[];
+  /** 選択中のキャラクターの話し方（src/lib/rewards.ts の voice）。 */
+  voice?: string;
 }): Promise<{ answer: string; referencedTaskEntryId: string | null }> {
   const candidateList = params.candidates.length
     ? params.candidates
@@ -197,11 +203,25 @@ export async function answerChatQuestion(params: {
     ].join("\n"),
   });
 
-  const text = await runAgentQuery({
-    systemPrompt:
-      "あなたは新人研修アプリ「新-cha-」の湯呑みマスコット案内役です。親しみやすく簡潔な日本語で答えてください。指示されたJSON形式だけを出力してください。",
-    content,
-  });
+  // 役割と守るべきことは全キャラクター共通。voice で変えるのは話し方だけ。
+  // ここを共通にしておかないと、選んだキャラクターによって説明の質が変わってしまう。
+  const systemPrompt = [
+    "あなたは、総務・人事・経理・法務といったコーポレート部門の新人を支援するアプリ「新-cha-」の案内役です。",
+    "扱うのは社内規程や手続きのルールです。期限・金額・承認者・例外条件を落とさずに答えてください。",
+    "",
+    "【話し方】",
+    params.voice ?? DEFAULT_VOICE,
+    "",
+    "【話し方を変えても、次の点はどのキャラクターでも同じにすること】",
+    "・答える内容、詳しさ、正確さを変えない。口調だけを変える。",
+    "・候補に書かれていないことを答えない。分からないときは分からないと言う。",
+    "・数字や期限、承認者などの条件は、口調に関係なく必ず省略せずに伝える。",
+    "・相手を見下したり、突き放したりしない。",
+    "",
+    "指示されたJSON形式だけを出力してください。",
+  ].join("\n");
+
+  const text = await runAgentQuery({ systemPrompt, content });
 
   const parsed = tryParseJson(text);
   if (!parsed) {
@@ -233,7 +253,7 @@ export async function summarizeConversationForSharing(params: {
 
   const text = await runAgentQuery({
     systemPrompt:
-      "あなたは新人研修アプリ「新-cha-」の案内役です。指示されたJSON形式だけを出力してください。",
+      "あなたは、コーポレート部門の新人を支援するアプリ「新-cha-」の案内役です。ここで作る文章はチーム全員が読む共有メモなので、キャラクターらしい話し方はせず、中立的な文章にしてください。指示されたJSON形式だけを出力してください。",
     content: [
       {
         type: "text",
