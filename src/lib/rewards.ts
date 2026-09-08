@@ -125,19 +125,21 @@ export const REWARDS: Reward[] = [
   },
   {
     id: "sencha",
-    name: "せんちゃ",
+    name: "煎茶",
     kind: "character",
     requiredLevel: 6,
     description: "きりっとした煎茶の子。仕事が早い。",
     accent: "#DCE9CE",
+    image: "/sencha_sennin.png",
   },
   {
     id: "gyokuro",
-    name: "ぎょくろ様",
+    name: "玉露様",
     kind: "character",
     requiredLevel: 8,
     description: "めったに出てこない玉露。会えたらかなりの上級者。",
     accent: "#FBF0C9",
+    image: "/gyokurosama.png",
   },
 ];
 
