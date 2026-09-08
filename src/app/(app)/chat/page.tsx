@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { computeQuestionTrend } from "@/lib/questionTrends";
 import { Icon } from "@/components/IconSprite";
 import Mascot from "@/components/Mascot";
 import PageTitle from "@/components/PageTitle";
+import QuestionTrendChart from "@/components/QuestionTrendChart";
 import ConversationList, {
   ConversationSummary,
 } from "@/components/ConversationList";
@@ -13,12 +15,14 @@ import ConversationList, {
  * チャットのホーム画面。
  * 上半分で新しいチャットを始め、下半分から過去のチャットを再開する。
  * 個々の会話は /chat/[id] で開く。
+ * 一番下には自分の質問傾向グラフ、adminの場合はさらにチームメンバーごとの
+ * 質問傾向グラフを積み重ねて表示する。
  */
 export default async function ChatHomePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [conversations, recentEntries, teamMembers] = await Promise.all([
+  const [conversations, recentEntries, myTrend, teamMembers] = await Promise.all([
     prisma.conversation.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
@@ -40,7 +44,8 @@ export default async function ChatHomePage() {
       take: 4,
       select: { title: true },
     }),
-    // admin専用: 同じチームのmemberの一覧（チャットの閲覧・コメント用）。
+    computeQuestionTrend(user.id),
+    // admin専用: 同じチームのmember一覧（メンバーごとの質問傾向グラフ用）。
     user.role === "admin" && user.teamId
       ? prisma.user.findMany({
           where: { teamId: user.teamId, role: "member" },
@@ -48,6 +53,16 @@ export default async function ChatHomePage() {
         })
       : Promise.resolve([]),
   ]);
+
+  const memberTrends =
+    teamMembers.length > 0
+      ? await Promise.all(
+          teamMembers.map(async (m) => ({
+            member: m,
+            trend: await computeQuestionTrend(m.id),
+          })),
+        )
+      : [];
 
   const summaries: ConversationSummary[] = conversations.map((c) => ({
     id: c.id,
@@ -110,30 +125,36 @@ export default async function ChatHomePage() {
         <ConversationList conversations={summaries} />
       </section>
 
-      {/* 下下部: admin専用。同じチームのmemberのチャットを見に行く導線。 */}
+      {/* 自分の質問傾向 */}
+      <section className="mt-9">
+        <div className="mb-4 flex items-baseline gap-2.5">
+          <h2 className="section-title">自分の質問傾向</h2>
+        </div>
+        <QuestionTrendChart title="質問した業務内容の割合" trend={myTrend} />
+      </section>
+
+      {/* admin専用: 同じチームのmemberごとの質問傾向 */}
       {user.role === "admin" && (
         <section className="mt-9">
           <div className="mb-4 flex items-baseline gap-2.5">
-            <h2 className="section-title">チームメンバーのチャット</h2>
-            {teamMembers.length > 0 && (
-              <span className="text-xs text-inkfaint">{teamMembers.length}人</span>
+            <h2 className="section-title">メンバーの質問傾向</h2>
+            {memberTrends.length > 0 && (
+              <span className="text-xs text-inkfaint">{memberTrends.length}人</span>
             )}
           </div>
-          {teamMembers.length === 0 ? (
+          {memberTrends.length === 0 ? (
             <p className="rounded-tile border-2 border-dashed border-matcha-line bg-matcha-soft px-6 py-8 text-center text-sm leading-relaxed text-matcha-deep">
               同じチームに新人がまだいないようです。
             </p>
           ) : (
-            <div className="flex flex-wrap gap-2.5">
-              {teamMembers.map((m) => (
-                <Link
-                  key={m.id}
-                  href={`/chat/team/${m.id}`}
-                  className="flex items-center gap-1.5 rounded-full border border-matcha-line bg-white px-3.5 py-2 text-xs font-bold text-matcha-deep transition hover:border-matcha hover:bg-matcha-soft"
-                >
-                  <Icon name="person" className="h-4 w-4" />
-                  {m.nickname ?? m.name}さんのチャットを見る
-                </Link>
+            <div className="flex flex-col gap-5">
+              {memberTrends.map(({ member, trend }) => (
+                <QuestionTrendChart
+                  key={member.id}
+                  title={`${member.nickname ?? member.name}さんの質問した業務内容の割合`}
+                  trend={trend}
+                  emptyMessage={`${member.nickname ?? member.name}さんはまだ質問していません。`}
+                />
               ))}
             </div>
           )}

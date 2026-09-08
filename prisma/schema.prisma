@@ -40,8 +40,6 @@ model User {
   events        Event[]
   todos         Todo[]
   notes         Note[]
-  // 先輩・管理者として、部下(member)のチャットに残したフィードバック
-  chatFeedbacks ChatFeedback[]
 }
 
 // チャットの会話（スレッド）。過去の会話を残したまま新しい会話を始められるようにする。
@@ -53,8 +51,7 @@ model Conversation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt // 一覧を新しい順に並べるために使う
 
-  messages  ChatMessage[]
-  feedbacks ChatFeedback[]
+  messages ChatMessage[]
 
   @@index([userId, updatedAt])
 }
@@ -104,20 +101,6 @@ model ChatMessage {
   createdAt             DateTime @default(now())
 
   attachments Attachment[]
-}
-
-// 先輩・管理者が、同じチームのmemberのチャット(会話)に残すフィードバック。
-// 特定の1メッセージへの返信ではなく、会話全体へのコメントとして扱う。
-model ChatFeedback {
-  id             String       @id @default(cuid())
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  adminId        String
-  admin          User         @relation(fields: [adminId], references: [id])
-  text           String
-  createdAt      DateTime     @default(now())
-
-  @@index([conversationId, createdAt])
 }
 
 // カレンダーの予定。チーム単位で共有し、研修や締め日、定例会議などを置く。

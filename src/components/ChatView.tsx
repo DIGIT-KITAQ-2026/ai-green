@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { deleteConversationAction } from "@/app/actions/chat";
 import ChatPanel from "./ChatPanel";
 import ChatMessage from "./ChatMessage";
-import FeedbackNote from "./FeedbackNote";
 import ConfirmSubmitButton from "./ConfirmSubmitButton";
 import { Icon } from "./IconSprite";
 
@@ -34,7 +33,7 @@ export default async function ChatView({
   /** 質問例から始めたときに、あらかじめ入力欄へ入れておく文章。 */
   initialText?: string;
 }) {
-  const [conversation, messages, feedbacks, recentEntries] = await Promise.all([
+  const [conversation, messages, recentEntries] = await Promise.all([
     conversationId
       ? prisma.conversation.findFirst({
           where: { id: conversationId, userId: user.id },
@@ -44,15 +43,6 @@ export default async function ChatView({
       ? prisma.chatMessage.findMany({
           where: { conversationId, userId: user.id },
           include: { attachments: true },
-          orderBy: { createdAt: "asc" },
-        })
-      : Promise.resolve([]),
-    // 先輩・管理者からのコメント。自分のチャットにも表示し、フィードバックが
-    // 届いたことがわかるようにする。
-    conversationId
-      ? prisma.chatFeedback.findMany({
-          where: { conversationId },
-          include: { admin: true },
           orderBy: { createdAt: "asc" },
         })
       : Promise.resolve([]),
@@ -73,15 +63,6 @@ export default async function ChatView({
     ? await prisma.taskEntry.findMany({ where: { id: { in: referencedIds } } })
     : [];
   const referencedMap = new Map(referenced.map((r) => [r.id, r]));
-
-  // メッセージとadminのコメントを時系列で1本にまとめて表示する。
-  type TimelineItem =
-    | { kind: "message"; at: Date; message: (typeof messages)[number] }
-    | { kind: "feedback"; at: Date; feedback: (typeof feedbacks)[number] };
-  const timeline: TimelineItem[] = [
-    ...messages.map((m) => ({ kind: "message" as const, at: m.createdAt, message: m })),
-    ...feedbacks.map((f) => ({ kind: "feedback" as const, at: f.createdAt, feedback: f })),
-  ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
   const suggestions = recentEntries.map((e) => `${e.title}について教えて`);
   const greetName = user.nickname ?? user.name;
@@ -135,14 +116,16 @@ export default async function ChatView({
         greetName={greetName}
         initialText={initialText}
       >
-        {timeline.map((item) => {
-          const date = DATE_FMT.format(item.at);
+        {messages.map((m) => {
+          const date = DATE_FMT.format(m.createdAt);
           const showDate = date !== lastDate;
           lastDate = date;
-          const key = item.kind === "message" ? item.message.id : item.feedback.id;
+          const ref = m.referencedTaskEntryId
+            ? referencedMap.get(m.referencedTaskEntryId)
+            : null;
 
           return (
-            <div key={key} className="space-y-5">
+            <div key={m.id} className="space-y-5">
               {showDate && (
                 <div className="flex items-center gap-3 pt-1">
                   <span className="h-px flex-1 bg-line" />
@@ -150,31 +133,16 @@ export default async function ChatView({
                   <span className="h-px flex-1 bg-line" />
                 </div>
               )}
-              {item.kind === "message" ? (
-                <ChatMessage
-                  role={item.message.role === "user" ? "user" : "assistant"}
-                  text={item.message.text}
-                  time={TIME_FMT.format(item.message.createdAt)}
-                  attachments={item.message.attachments.map((a) => ({
-                    id: a.id,
-                    filename: a.filename,
-                  }))}
-                  reference={
-                    item.message.referencedTaskEntryId
-                      ? (() => {
-                          const ref = referencedMap.get(item.message.referencedTaskEntryId!);
-                          return ref ? { id: ref.id, title: ref.title } : null;
-                        })()
-                      : null
-                  }
-                />
-              ) : (
-                <FeedbackNote
-                  authorName={item.feedback.admin.nickname ?? item.feedback.admin.name}
-                  text={item.feedback.text}
-                  time={TIME_FMT.format(item.feedback.createdAt)}
-                />
-              )}
+              <ChatMessage
+                role={m.role === "user" ? "user" : "assistant"}
+                text={m.text}
+                time={TIME_FMT.format(m.createdAt)}
+                attachments={m.attachments.map((a) => ({
+                  id: a.id,
+                  filename: a.filename,
+                }))}
+                reference={ref ? { id: ref.id, title: ref.title } : null}
+              />
             </div>
           );
         })}
