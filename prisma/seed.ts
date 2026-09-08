@@ -13,6 +13,15 @@ const SEED_DATA_DIR = path.join(__dirname, "seed-data");
  * 結果を書き出したもの（prisma/seed-data/task-entries.json）。
  * ここから流し込むので、AI（claude login）が無くても同じデモ環境を再現できる。
  */
+type SeedSharedNote = {
+  /** どの業務内容についてのメモか（タイトルで対応づける） */
+  entryTitle: string;
+  title: string;
+  body: string;
+  /** 新人が実際に使いそうな言い回し。チャットの検索で手がかりに使う。 */
+  sourceQuestions: string[];
+};
+
 type SeedEntry = {
   title: string;
   teamName: string;
@@ -57,6 +66,7 @@ async function main() {
   }
 
   await seedTaskEntries();
+  await seedSharedNotes();
 
   console.log("Seed complete.");
 }
@@ -135,6 +145,65 @@ async function seedTaskEntries() {
   } else {
     console.log("Demo task entries already present — nothing to add.");
   }
+}
+
+/**
+ * デモ用の「みんなのメモ」を投入する。
+ *
+ * チャットの検索は、共有メモに残った「その言い方をした人はこの資料に辿り着いた」
+ * という対応を手がかりに使う。ただし文字の重なりで判定しているため、
+ * 1資料につき1通りの言い回ししか無いと効果が出ない。
+ * デモで機能が伝わるよう、1資料あたり3〜4通りの言い回しを入れている。
+ *
+ * 同じ見出しが既にあれば何もしないので、何度実行しても増えない。
+ */
+async function seedSharedNotes() {
+  const jsonPath = path.join(SEED_DATA_DIR, "shared-notes.json");
+  if (!fs.existsSync(jsonPath)) {
+    console.log("No seed-data/shared-notes.json — skipped shared notes.");
+    return;
+  }
+
+  const author = await prisma.user.findUnique({
+    where: { loginId: "demo@shincha.local" },
+  });
+  if (!author?.teamId) {
+    console.log("Demo account (or its team) not found — skipped shared notes.");
+    return;
+  }
+
+  const notes: SeedSharedNote[] = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+  let created = 0;
+
+  for (const note of notes) {
+    const existing = await prisma.sharedNote.findFirst({
+      where: { title: note.title, teamId: author.teamId },
+    });
+    if (existing) continue;
+
+    const entry = await prisma.taskEntry.findFirst({
+      where: { title: note.entryTitle },
+      select: { id: true },
+    });
+
+    await prisma.sharedNote.create({
+      data: {
+        title: note.title,
+        body: note.body,
+        teamId: author.teamId,
+        authorId: author.id,
+        referencedTaskEntryId: entry?.id ?? null,
+        sourceQuestions: note.sourceQuestions.join("\n"),
+      },
+    });
+    created++;
+  }
+
+  console.log(
+    created > 0
+      ? `Seeded ${created} demo shared notes.`
+      : "Demo shared notes already present — nothing to add.",
+  );
 }
 
 main()
