@@ -14,7 +14,6 @@ const NAV_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/chat", label: "チャット", icon: "chat" },
   { href: "/tasks", label: "業務内容", icon: "book" },
   { href: "/calendar", label: "カレンダー", icon: "calendar" },
-  { href: "/todos", label: "ToDo", icon: "check-list" },
   { href: "/notes", label: "メモ", icon: "note" },
   { href: "/character", label: "キャラクター", icon: "star" },
   { href: "/settings", label: "設定", icon: "gear" },
