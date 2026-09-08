@@ -20,10 +20,17 @@ function sign(payload: string): string {
   return createHmac("sha256", getSecret()).update(payload).digest("base64url");
 }
 
-/** ユーザーIDと有効期限を署名付きCookie用トークンに変換する。 */
-export function createSessionToken(userId: string): string {
+/**
+ * ユーザーIDと有効期限を署名付きCookie用トークンに変換する。
+ *
+ * sv（セッション世代）を一緒に入れておき、getCurrentUser でDB側の値と
+ * 突き合わせる。ユーザー側の値を増やせば、発行済みのトークンをまとめて
+ * 無効にできる（他の端末からのログアウト・パスワード変更時に使う）。
+ */
+export function createSessionToken(userId: string, sessionVersion: number): string {
   const payload = JSON.stringify({
     uid: userId,
+    sv: sessionVersion,
     exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000,
   });
   const encodedPayload = Buffer.from(payload, "utf8").toString("base64url");
@@ -31,8 +38,13 @@ export function createSessionToken(userId: string): string {
   return `${encodedPayload}.${signature}`;
 }
 
-/** トークンを検証し、有効であればユーザーIDを返す。無効・期限切れなら null。 */
-export function verifySessionToken(token: string | undefined): string | null {
+/**
+ * トークンを検証し、有効であれば中身を返す。無効・期限切れなら null。
+ * 署名の検証まで。セッション世代の照合はDBが要るので getCurrentUser で行う。
+ */
+export function verifySessionToken(
+  token: string | undefined,
+): { userId: string; sessionVersion: number } | null {
   if (!token) return null;
   const [encodedPayload, signature] = token.split(".");
   if (!encodedPayload || !signature) return null;
@@ -45,9 +57,9 @@ export function verifySessionToken(token: string | undefined): string | null {
   try {
     const payload = JSON.parse(
       Buffer.from(encodedPayload, "base64url").toString("utf8"),
-    ) as { uid: string; exp: number };
+    ) as { uid: string; sv?: number; exp: number };
     if (payload.exp < Date.now()) return null;
-    return payload.uid;
+    return { userId: payload.uid, sessionVersion: payload.sv ?? 0 };
   } catch {
     return null;
   }
@@ -68,13 +80,20 @@ export function verifyPassword(
 export async function getCurrentUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const userId = verifySessionToken(token);
-  if (!userId) return null;
+  const session = verifySessionToken(token);
+  if (!session) return null;
 
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: session.userId },
     include: { team: true },
   });
+  if (!user) return null;
+
+  // 他の端末からのログアウト・パスワード変更で世代が進んだトークンは無効。
+  if (user.sessionVersion !== session.sessionVersion) return null;
+  // 管理者に止められたアカウントは入れない。
+  if (!user.isActive) return null;
+
   return user;
 }
 

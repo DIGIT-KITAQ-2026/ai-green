@@ -24,7 +24,6 @@ model User {
   loginId      String   @unique // ログインID（社員ID・メールアドレス等）
   passwordHash String
   name         String
-  nickname     String? // 呼び方（マスコットがユーザーを呼ぶ名前）
   role         String   @default("member") // "member" | "admin"
   teamId       String?
   team         Team?    @relation(fields: [teamId], references: [id])
@@ -34,6 +33,16 @@ model User {
   xp               Int     @default(0)
   // 選択中のキャラクター／着せ替え。ID は rewards.ts のカタログを指す。
   selectedRewardId String?
+
+  // セッションの世代。ログイン中の端末をまとめて締め出すために使う。
+  // セッションはDBに持たない署名付きCookie方式なので、これを増やすことで
+  // 発行済みのトークンをまとめて無効にする（パスワード変更時にも増やす）。
+  sessionVersion Int @default(0)
+
+  // 退職者などのアカウントを止めるためのフラグ。
+  // 削除すると本人が書いた共有メモの作者表示などが失われるため、
+  // 「消す」ではなく「入れなくする」を管理者に持たせている。
+  isActive Boolean @default(true)
 
   entries       TaskEntry[]
   chatMessages  ChatMessage[]

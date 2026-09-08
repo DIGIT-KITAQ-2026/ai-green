@@ -23,10 +23,16 @@ export async function loginAction(formData: FormData) {
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     redirect(`/login?error=${encodeURIComponent("IDまたはパスワードが正しくありません")}`);
   }
+  // 管理者に停止されたアカウント。理由は明かさず、同じ文面にはしない。
+  if (!user!.isActive) {
+    redirect(
+      `/login?error=${encodeURIComponent("このアカウントは利用が停止されています。管理者にお問い合わせください。")}`,
+    );
+  }
 
   (await cookies()).set(
     SESSION_COOKIE,
-    createSessionToken(user!.id),
+    createSessionToken(user!.id, user!.sessionVersion),
     SESSION_COOKIE_OPTIONS,
   );
 
@@ -60,7 +66,7 @@ export async function signupAction(formData: FormData) {
 
   (await cookies()).set(
     SESSION_COOKIE,
-    createSessionToken(user.id),
+    createSessionToken(user.id, user.sessionVersion),
     SESSION_COOKIE_OPTIONS,
   );
 

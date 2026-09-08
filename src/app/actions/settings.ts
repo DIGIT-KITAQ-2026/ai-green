@@ -5,23 +5,12 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import {
   SESSION_COOKIE,
+  SESSION_COOKIE_OPTIONS,
+  createSessionToken,
   getCurrentUser,
   hashPassword,
   verifyPassword,
 } from "@/lib/auth";
-
-export async function updateNicknameAction(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-
-  const nickname = String(formData.get("nickname") ?? "").trim();
-  await prisma.user.update({
-    where: { id: user!.id },
-    data: { nickname: nickname || null },
-  });
-
-  redirect("/settings?saved=nickname");
-}
 
 export async function updateTeamAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -49,12 +38,131 @@ export async function changePasswordAction(formData: FormData) {
     redirect(`/settings?error=${encodeURIComponent("新しいパスワードは8文字以上にしてください")}`);
   }
 
-  await prisma.user.update({
+  // パスワードを変えたら、他の端末に残っているセッションも切る。
+  const updated = await prisma.user.update({
     where: { id: user!.id },
-    data: { passwordHash: await hashPassword(newPassword) },
+    data: {
+      passwordHash: await hashPassword(newPassword),
+      sessionVersion: { increment: 1 },
+    },
   });
+  // 世代を進めると今のCookieも無効になるので、自分の分だけ貼り直す。
+  await reissueSession(updated.id, updated.sessionVersion);
 
   redirect("/settings?saved=password");
+}
+
+/** 世代を進めたあと、操作した本人だけログインを保てるようCookieを貼り直す。 */
+async function reissueSession(userId: string, sessionVersion: number) {
+  const cookieStore = await cookies();
+  cookieStore.set(
+    SESSION_COOKIE,
+    createSessionToken(userId, sessionVersion),
+    SESSION_COOKIE_OPTIONS,
+  );
+}
+
+/** 氏名とログインIDを変更する。改姓やメールアドレスの変更に対応するため。 */
+export async function updateProfileAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const name = String(formData.get("name") ?? "").trim();
+  const loginId = String(formData.get("loginId") ?? "").trim();
+
+  if (!name || !loginId) {
+    redirect(`/settings?error=${encodeURIComponent("氏名とIDを入力してください")}`);
+  }
+  if (loginId !== user!.loginId) {
+    const taken = await prisma.user.findUnique({ where: { loginId } });
+    if (taken) {
+      redirect(`/settings?error=${encodeURIComponent("そのIDはすでに使われています")}`);
+    }
+  }
+
+  await prisma.user.update({
+    where: { id: user!.id },
+    data: { name, loginId },
+  });
+
+  redirect("/settings?saved=profile");
+}
+
+/**
+ * 他の端末のセッションを切る。
+ * セッションはDBに持たない署名付きCookie方式なので、世代を1つ進めることで
+ * 発行済みのトークンをまとめて無効にする。操作した端末だけ貼り直して残す。
+ */
+export async function revokeOtherSessionsAction() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const updated = await prisma.user.update({
+    where: { id: user!.id },
+    data: { sessionVersion: { increment: 1 } },
+  });
+  await reissueSession(updated.id, updated.sessionVersion);
+
+  redirect("/settings?saved=sessions");
+}
+
+/**
+ * 管理者が、同じチームのメンバーの権限を変える。
+ * 自分自身は変えられない（最後の管理者が自分を降格させて詰むのを防ぐ）。
+ */
+export async function updateMemberRoleAction(formData: FormData) {
+  const admin = await getCurrentUser();
+  if (!admin) redirect("/login");
+  if (admin!.role !== "admin") redirect("/settings");
+
+  const userId = String(formData.get("userId") ?? "");
+  const role = String(formData.get("role") ?? "") === "admin" ? "admin" : "member";
+
+  if (userId === admin!.id) {
+    redirect(`/settings?error=${encodeURIComponent("自分の権限は変更できません")}`);
+  }
+
+  const target = await prisma.user.findFirst({
+    where: { id: userId, teamId: admin!.teamId ?? undefined },
+  });
+  if (!target) redirect("/settings");
+
+  await prisma.user.update({ where: { id: target!.id }, data: { role } });
+  redirect("/settings?saved=role");
+}
+
+/**
+ * 管理者が、同じチームのメンバーの利用を止める／再開する。
+ * 退職者のアカウントを止めるための機能。削除ではないので、
+ * その人が書いた共有メモなどの記録は残る。
+ * 止めた相手はすぐ入れなくなる（getCurrentUser が isActive を見ている）。
+ */
+export async function updateMemberActiveAction(formData: FormData) {
+  const admin = await getCurrentUser();
+  if (!admin) redirect("/login");
+  if (admin!.role !== "admin") redirect("/settings");
+
+  const userId = String(formData.get("userId") ?? "");
+  const active = String(formData.get("active") ?? "") === "1";
+
+  if (userId === admin!.id) {
+    redirect(`/settings?error=${encodeURIComponent("自分のアカウントは停止できません")}`);
+  }
+
+  const target = await prisma.user.findFirst({
+    where: { id: userId, teamId: admin!.teamId ?? undefined },
+  });
+  if (!target) redirect("/settings");
+
+  await prisma.user.update({
+    where: { id: target!.id },
+    // 止めるときは世代も進め、ログイン中の端末をその場で締め出す。
+    data: active
+      ? { isActive: true }
+      : { isActive: false, sessionVersion: { increment: 1 } },
+  });
+
+  redirect(`/settings?saved=${active ? "reactivated" : "deactivated"}`);
 }
 
 /**
