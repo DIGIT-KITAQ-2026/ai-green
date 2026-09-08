@@ -12,12 +12,15 @@ export default function FolderCard({
   teamName,
   summary,
   color = DEFAULT_TEAM_COLOR,
+  referenceCount,
 }: {
   href: string;
   title: string;
   teamName: string;
   summary: string;
   color?: TeamColor;
+  /** 自分がチャットでこの業務内容を参照した回数。0件・未指定なら出さない。 */
+  referenceCount?: number;
 }) {
   return (
     <Link href={href} className="group block h-full">
@@ -31,6 +34,11 @@ export default function FolderCard({
           className="relative flex h-full min-h-[8.5rem] flex-col gap-1.5 rounded-xl rounded-tl-sm px-4 py-3.5 shadow-lift"
           style={{ backgroundColor: color.body }}
         >
+          {!!referenceCount && (
+            <span className="absolute right-2 top-2 rounded-full bg-white/85 px-2 py-0.5 text-[10px] font-bold text-ink/70 shadow-sm">
+              参照{referenceCount}回
+            </span>
+          )}
           <p className="text-xs font-bold text-ink/70">{teamName}</p>
           <p className="font-display font-black leading-snug text-ink">{title}</p>
           <p className="line-clamp-3 text-xs leading-relaxed text-ink/75">

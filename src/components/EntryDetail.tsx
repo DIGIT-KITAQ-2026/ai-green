@@ -100,22 +100,24 @@ export default async function EntryDetail({
         {entry.createdAt.toLocaleString("ja-JP")}
       </p>
 
-      <form
-        action={deleteTaskEntryAction}
-        className="mt-6 border-t border-line pt-4"
-      >
-        <input type="hidden" name="entryId" value={entry.id} />
-        <ConfirmSubmitButton
-          confirmMessage={`「${entry.title}」を削除します。添付ファイルも消え、元に戻せません。よろしいですか？`}
-          pendingLabel="削除中…"
-          className="rounded-xl border border-line px-4 py-2.5 text-sm font-bold text-inksoft transition hover:border-red-400 hover:text-red-600 disabled:opacity-50"
+      {user.role === "admin" && (
+        <form
+          action={deleteTaskEntryAction}
+          className="mt-6 border-t border-line pt-4"
         >
-          この業務内容を削除
-        </ConfirmSubmitButton>
-        <p className="mt-2 text-[11px] text-inkfaint">
-          チーム全員が見る資料です。削除すると他のメンバーからも見えなくなります。
-        </p>
-      </form>
+          <input type="hidden" name="entryId" value={entry.id} />
+          <ConfirmSubmitButton
+            confirmMessage={`「${entry.title}」を削除します。添付ファイルも消え、元に戻せません。よろしいですか？`}
+            pendingLabel="削除中…"
+            className="rounded-xl border border-line px-4 py-2.5 text-sm font-bold text-inksoft transition hover:border-red-400 hover:text-red-600 disabled:opacity-50"
+          >
+            この業務内容を削除
+          </ConfirmSubmitButton>
+          <p className="mt-2 text-[11px] text-inkfaint">
+            チーム全員が見る資料です。削除すると他のメンバーからも見えなくなります。
+          </p>
+        </form>
+      )}
     </div>
   );
 }

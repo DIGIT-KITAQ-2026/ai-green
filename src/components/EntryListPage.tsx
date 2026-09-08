@@ -12,11 +12,16 @@ import { buildTeamColorMap, DEFAULT_TEAM_COLOR } from "@/lib/teamColors";
  * 業務内容の一覧。
  * もとは「業務内容」と「マニュアル」で画面が分かれていたが、
  * 機能が同じだったため1つに統合した。チームでの絞り込みは引き継いでいる。
+ *
+ * 登録・削除は先輩・管理者(admin)のみ。新人(member)は閲覧のみなので、
+ * 「新規追加はこちら」ボタンはadminにしか出さない。
  */
 export default async function EntryListPage({
   selectedTeamId,
+  error,
 }: {
   selectedTeamId?: string;
+  error?: string;
 }) {
   // 認可はレイアウトに任せず、データを取る直前で必ず確認する。
   // レイアウトの redirect はページの描画自体は止めないため、これが無いと
@@ -24,7 +29,9 @@ export default async function EntryListPage({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [teams, entries] = await Promise.all([
+  const isAdmin = user.role === "admin";
+
+  const [teams, entries, myReferenceCounts] = await Promise.all([
     // 色は作成順に配るので、この順で取得する（表示は名前順に並べ替える）。
     prisma.team.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.taskEntry.findMany({
@@ -32,23 +39,36 @@ export default async function EntryListPage({
       include: { team: true },
       orderBy: { createdAt: "desc" },
     }),
+    // 自分がチャットで何回参照したかを、業務内容ごとに数える（一覧カードのバッジ用）。
+    prisma.chatMessage.groupBy({
+      by: ["referencedTaskEntryId"],
+      where: { userId: user.id, referencedTaskEntryId: { not: null } },
+      _count: { _all: true },
+    }),
   ]);
 
   const colorByTeam = buildTeamColorMap(teams.map((t) => t.id));
   const teamsByName = [...teams].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  const referenceCountByEntry = new Map(
+    myReferenceCounts.map((r) => [r.referencedTaskEntryId as string, r._count._all]),
+  );
 
   return (
     <div>
       <PageTitle
         action={
-          <Link href="/tasks/new" className="btn-primary">
-            <Icon name="plus" className="h-5 w-5" />
-            新規追加はこちら
-          </Link>
+          isAdmin ? (
+            <Link href="/tasks/new" className="btn-primary">
+              <Icon name="plus" className="h-5 w-5" />
+              新規追加はこちら
+            </Link>
+          ) : undefined
         }
       >
         業務内容
       </PageTitle>
+
+      {error && <p className="banner-error mb-5">{error}</p>}
 
       <div className="mb-7 flex flex-wrap gap-2 text-xs">
         <Link
@@ -89,7 +109,9 @@ export default async function EntryListPage({
           <p className="font-hand leading-relaxed text-matcha-deep">
             まだ業務内容が登録されていないみたい。
             <br />
-            「新規追加はこちら」から最初の1件を教えてね！
+            {isAdmin
+              ? "「新規追加はこちら」から最初の1件を教えてね！"
+              : "先輩・管理者が登録してくれるのを待っていてね。"}
           </p>
         </div>
       ) : (
@@ -102,6 +124,7 @@ export default async function EntryListPage({
               teamName={entry.team.name}
               summary={entry.summary}
               color={colorByTeam.get(entry.team.id)}
+              referenceCount={referenceCountByEntry.get(entry.id)}
             />
           ))}
         </div>
