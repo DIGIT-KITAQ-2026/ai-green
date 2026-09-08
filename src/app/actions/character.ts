@@ -33,6 +33,6 @@ export async function selectRewardAction(formData: FormData) {
   });
 
   revalidatePath("/character");
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   redirect(`/character?selected=${encodeURIComponent(reward!.name)}`);
 }
