@@ -12,9 +12,7 @@ export default async function AppLayout({
   if (!user) redirect("/login");
   if (!user.teamId) redirect("/onboarding/team");
 
-  const displayName = user.nickname
-    ? `${user.nickname}（${user.name}）`
-    : user.name;
+  const displayName = user.name;
 
   const reward = rewardById(user.selectedRewardId);
   const info = levelInfo(user.xp);

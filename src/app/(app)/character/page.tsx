@@ -26,7 +26,7 @@ export default async function CharacterPage({
 
   const info = levelInfo(user.xp);
   const current = rewardById(user.selectedRewardId);
-  const greetName = user.nickname ?? user.name;
+  const greetName = user.name;
 
   // 何をどれだけやったかを出して、次に何をすれば伸びるか分かるようにする。
   const [questions, todosDone, entries] = await Promise.all([

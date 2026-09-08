@@ -76,7 +76,7 @@ export default async function ChatHomePage() {
   }));
 
   const suggestions = recentEntries.map((e) => `${e.title}について教えて`);
-  const greetName = user.nickname ?? user.name;
+  const greetName = user.name;
 
   return (
     <div>
@@ -154,9 +154,9 @@ export default async function ChatHomePage() {
               {memberTrends.map(({ member, trend }) => (
                 <QuestionTrendChart
                   key={member.id}
-                  title={`${member.nickname ?? member.name}さんの質問した業務内容の割合`}
+                  title={`${member.name}さんの質問した業務内容の割合`}
                   trend={trend}
-                  emptyMessage={`${member.nickname ?? member.name}さんはまだ質問していません。`}
+                  emptyMessage={`${member.name}さんはまだ質問していません。`}
                 />
               ))}
             </div>

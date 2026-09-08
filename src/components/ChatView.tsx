@@ -29,7 +29,7 @@ export default async function ChatView({
   error,
   initialText = "",
 }: {
-  user: { id: string; name: string; nickname: string | null; teamId: string | null };
+  user: { id: string; name: string; teamId: string | null };
   conversationId: string | null;
   error?: string;
   /** 質問例から始めたときに、あらかじめ入力欄へ入れておく文章。 */
@@ -68,7 +68,7 @@ export default async function ChatView({
   const referencedMap = new Map(referenced.map((r) => [r.id, r]));
 
   const suggestions = recentEntries.map((e) => `${e.title}について教えて`);
-  const greetName = user.nickname ?? user.name;
+  const greetName = user.name;
 
   let lastDate = "";
 

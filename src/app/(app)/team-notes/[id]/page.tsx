@@ -38,7 +38,7 @@ export default async function SharedNoteDetailPage({
   // 同じチームのメモしか開けない。
   const note = await prisma.sharedNote.findFirst({
     where: { id, teamId: user.teamId ?? undefined },
-    include: { author: { select: { name: true, nickname: true } } },
+    include: { author: { select: { name: true } } },
   });
   if (!note) notFound();
 
@@ -50,7 +50,7 @@ export default async function SharedNoteDetailPage({
     : null;
 
   const canEdit = note.authorId === user.id || user.role === "admin";
-  const author = note.author?.nickname ?? note.author?.name ?? "退会したユーザー";
+  const author = note.author?.name ?? "退会したユーザー";
 
   return (
     <div className="max-w-3xl">

@@ -32,7 +32,7 @@ export default async function TeamNotesPage({
     ? await prisma.sharedNote.findMany({
         where: { teamId: user.teamId },
         orderBy: { createdAt: "desc" },
-        include: { author: { select: { name: true, nickname: true } } },
+        include: { author: { select: { name: true } } },
       })
     : [];
 
@@ -89,7 +89,7 @@ export default async function TeamNotesPage({
             const entry = n.referencedTaskEntryId
               ? entryMap.get(n.referencedTaskEntryId)
               : null;
-            const author = n.author?.nickname ?? n.author?.name ?? "退会したユーザー";
+            const author = n.author?.name ?? "退会したユーザー";
             // 直すのも消すのも、書いた本人と先輩・管理者だけ
             const canEdit = n.authorId === user.id || user.role === "admin";
 
