@@ -30,8 +30,9 @@ type SeedEntry = {
   attachments: { filename: string; mimeType: string; kind: string }[];
 };
 
-// 所属選択画面の手書きメモにあったチーム例
-const TEAMS = ["営業チーム", "開発チーム", "カスタマーサポート"];
+// 所属選択画面に出す部門。
+// 対象を「コーポレート職（総務・人事など）」に絞ったため、その部門構成にしている。
+const TEAMS = ["人事", "総務", "経理", "法務"];
 
 async function main() {
   for (const name of TEAMS) {
@@ -42,8 +43,8 @@ async function main() {
     });
   }
 
-  const devTeam = await prisma.team.findUniqueOrThrow({
-    where: { name: "開発チーム" },
+  const defaultTeam = await prisma.team.findUniqueOrThrow({
+    where: { name: "人事" },
   });
 
   // 動作確認用のデモ管理者アカウント（先輩ロール）
@@ -57,9 +58,8 @@ async function main() {
         loginId: demoLoginId,
         passwordHash: await bcrypt.hash("password123", 10),
         name: "デモ先輩",
-        nickname: "せんぱい",
         role: "admin",
-        teamId: devTeam.id,
+        teamId: defaultTeam.id,
       },
     });
     console.log(`Seeded demo account: ${demoLoginId} / password123`);
