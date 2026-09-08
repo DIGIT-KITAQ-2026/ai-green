@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseUploadedFiles, UploadValidationError } from "@/lib/uploads";
 import { answerChatQuestion } from "@/lib/claudeAgent";
-import { rankEntriesByQuery } from "@/lib/retrieval";
+import { rankEntriesByQuery, type SearchHint } from "@/lib/retrieval";
 import { XP_RULES } from "@/lib/rewards";
 
 /** AIに渡す過去のやり取りの上限。長くなりすぎないよう直近のみを見せる。 */
@@ -107,10 +107,31 @@ export async function sendChatMessageAction(formData: FormData) {
     orderBy: { createdAt: "desc" },
   });
 
+  // みんなのメモを「どの言い方をした人がどの資料に辿り着いたか」の手がかりとして使う。
+  // 回答の根拠に渡すのはあくまで業務内容そのもので、メモの本文は渡さない
+  // （原典から内容がブレたり、古いメモが最新の資料より優先されるのを防ぐため）。
+  const hints: SearchHint[] = user!.teamId
+    ? (
+        await prisma.sharedNote.findMany({
+          where: { teamId: user!.teamId, referencedTaskEntryId: { not: null } },
+          select: { referencedTaskEntryId: true, sourceQuestions: true },
+        })
+      ).flatMap((n) =>
+        // 質問文1件ずつを手がかりにする。見出しや本文は混ぜない
+        // （文章が長いほど偶然の一致が増え、無関係な資料が上がってしまうため）。
+        (n.sourceQuestions ?? "")
+          .split("\n")
+          .map((q) => q.trim())
+          .filter(Boolean)
+          .map((q) => ({ entryId: n.referencedTaskEntryId!, text: q })),
+      )
+    : [];
+
   const candidates = rankEntriesByQuery(
     text || (files ?? []).map((f) => f.filename).join(" "),
     allEntries,
     5,
+    hints,
   );
 
   let answerText: string;
