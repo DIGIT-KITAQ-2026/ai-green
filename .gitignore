@@ -1,12 +1,13 @@
 node_modules/
 .next/
 out/
-prisma/data/*.db
-prisma/data/*.db-journal
-# 手動で取ったDBバックアップ（shincha.db.bak-YYYYMMDD-HHMMSS など）
-prisma/data/*.bak*
+# next dev と next build で中身が入れ替わる生成ファイル。
+# 追跡すると、実行したコマンド次第で毎回差分が出て pull がぶつかる。
+next-env.d.ts
 .env
 .env.local
+.env.local.*
+.env*.local
 *.log
 .DS_Store
 *.tsbuildinfo

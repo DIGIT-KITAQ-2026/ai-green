@@ -38,17 +38,39 @@ npm install
 
 ### 1. Supabase を用意する
 
-ローカルで動かす場合は Docker と [Supabase CLI](https://supabase.com/docs/guides/cli) が必要です。
+**クラウド（推奨・Docker不要）とローカル（Docker必要）のどちらでも動きます。**
+チームで開発するなら全員が同じデータを見られるクラウドが向いています。
+
+```bash
+cp .env.example .env.local
+```
+
+#### クラウドに繋ぐ場合
+
+[Supabaseダッシュボード](https://supabase.com/dashboard)でプロジェクトを作り、
+Project Settings > API の値を `.env.local` に入れます。
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=（anon public）
+SUPABASE_SERVICE_ROLE_KEY=（service_role）
+```
+
+スキーマの適用方法は2つあります。どちらでも結果は同じです。
+
+- **CLI**（Docker不要）: `supabase login` → `supabase link --project-ref xxxx` → `supabase db push`
+- **ダッシュボード**: `supabase/migrations/` のSQLをファイル名の順に SQL Editor へ貼って実行する
+
+#### ローカルで動かす場合
+
+Docker と [Supabase CLI](https://supabase.com/docs/guides/cli) が必要です。
 
 ```bash
 supabase start
 ```
 
 起動時に表示される `API URL` / `ANON_KEY` / `SERVICE_ROLE_KEY` を `.env.local` に書きます。
-
-```bash
-cp .env.example .env.local
-```
+マイグレーションは `supabase start` / `npm run db:reset` の時点で自動的に適用されます。
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
@@ -56,10 +78,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=（start が表示した ANON_KEY）
 SUPABASE_SERVICE_ROLE_KEY=（start が表示した SERVICE_ROLE_KEY）
 ```
 
-クラウドのプロジェクトに繋ぐ場合は、Project Settings > API の値を同じ3つに入れ、
-`supabase link` のうえ `supabase db push` でマイグレーションを適用してください。
 `SUPABASE_SERVICE_ROLE_KEY` はRLSを通さない鍵なので、サーバー側だけで使い、
 絶対に公開しないでください（このアプリではアカウント削除・利用停止・シード投入にのみ使っています）。
+`.env.local` は `.gitignore` 済みです。
 
 AIを使う機能（チャット回答・登録内容の解析）を動かすには、**このアプリを実行する
 マシン上で事前に一度だけ** `claude login` を実行し、Claude Codeにログインしておいて
@@ -72,8 +93,8 @@ claude login
 
 ### 2. スキーマと初期データ
 
-スキーマは `supabase/migrations/` の4本＋補助2本で作られます。`supabase start` /
-`npm run db:reset` の時点で自動的に適用されるので、あとは初期データを流すだけです。
+スキーマは `supabase/migrations/` のSQLで作られます。上の手順で適用済みなら、
+あとは初期データを流すだけです（クラウド・ローカルどちらでも同じコマンドです）。
 
 ```bash
 npm run db:seed
@@ -84,13 +105,13 @@ npm run db:seed
 - 所属部門4件（人事 / 総務 / 経理 / 法務）
 - デモアカウント（`demo@shincha.local` / `password123`、先輩・管理者、Lv8）
 - デモ用の業務内容32件（PDF添付つき／4部門分）
-- デモ用のみんなのメモ8件
+- デモ用のみんなのメモ16件（4部門×4件）
 
 その他のコマンド:
 
 | コマンド | 用途 |
 |---|---|
-| `npm run db:reset` | ローカルDBを作り直してマイグレーションを再適用する |
+| `npm run db:reset` | ローカルDBを作り直してマイグレーションを再適用する（ローカル専用） |
 | `npm run db:types` | スキーマからTypeScriptの型を再生成する（マイグレーションを足したら実行） |
 
 デモ用の業務内容は `supabase/seed-data/` に置いています。実際に登録画面から
