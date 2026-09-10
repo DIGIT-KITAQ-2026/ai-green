@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 import { Icon } from "./IconSprite";
 import FolderCard from "./FolderCard";
@@ -31,26 +31,28 @@ export default async function EntryListPage({
 
   const isAdmin = user.role === "admin";
 
-  const [teams, entries, myReferenceCounts] = await Promise.all([
+  const supabase = await createClient();
+  const entryQuery = supabase
+    .from("task_entries")
+    .select("id, title, summary, team:teams(id, name)")
+    .order("created_at", { ascending: false });
+
+  const [teamRes, entryRes, referenceRes] = await Promise.all([
     // 色は作成順に配るので、この順で取得する（表示は名前順に並べ替える）。
-    prisma.team.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.taskEntry.findMany({
-      where: selectedTeamId ? { teamId: selectedTeamId } : {},
-      include: { team: true },
-      orderBy: { createdAt: "desc" },
-    }),
+    supabase.from("teams").select("id, name").order("created_at"),
+    selectedTeamId ? entryQuery.eq("team_id", selectedTeamId) : entryQuery,
     // 自分がチャットで何回参照したかを、業務内容ごとに数える（一覧カードのバッジ用）。
-    prisma.chatMessage.groupBy({
-      by: ["referencedTaskEntryId"],
-      where: { userId: user.id, referencedTaskEntryId: { not: null } },
-      _count: { _all: true },
-    }),
+    supabase.rpc("question_trend", { p_user_id: user.id }),
   ]);
 
+  const teams = teamRes.data ?? [];
+  const entries = entryRes.data ?? [];
   const colorByTeam = buildTeamColorMap(teams.map((t) => t.id));
   const teamsByName = [...teams].sort((a, b) => a.name.localeCompare(b.name, "ja"));
   const referenceCountByEntry = new Map(
-    myReferenceCounts.map((r) => [r.referencedTaskEntryId as string, r._count._all]),
+    (referenceRes.data ?? [])
+      .filter((r) => r.referenced_task_entry_id)
+      .map((r) => [r.referenced_task_entry_id as string, Number(r.count)]),
   );
 
   return (

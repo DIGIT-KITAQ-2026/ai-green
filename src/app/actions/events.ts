@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 
 /**
@@ -25,17 +25,16 @@ export async function createEventAction(formData: FormData) {
   if (!title || !date) fail("予定名と日付を入力してください");
   if (!user!.teamId) fail("所属チームが未設定のため予定を登録できません");
 
-  await prisma.event.create({
-    data: {
-      title,
-      // <input type="date"> は "YYYY-MM-DD"。時刻を持たないので正午で保存し、
-      // タイムゾーンで前後の日にずれないようにする。
-      date: new Date(`${date}T12:00:00`),
-      startTime: startTime || null,
-      note: note || null,
-      teamId: user!.teamId!,
-      createdById: user!.id,
-    },
+  const supabase = await createClient();
+  await supabase.from("events").insert({
+    title,
+    // <input type="date"> の "YYYY-MM-DD" をそのまま date 型に入れる。
+    // 時刻を持たない列なので、タイムゾーンで前後の日にずれることがない。
+    date,
+    start_time: startTime || null,
+    note: note || null,
+    team_id: user!.teamId!,
+    created_by: user!.id,
   });
 
   revalidatePath("/calendar");
@@ -52,7 +51,8 @@ export async function deleteEventAction(formData: FormData) {
 
   if (id && user!.teamId) {
     // 同じチームの予定だけ削除できる。
-    await prisma.event.deleteMany({ where: { id, teamId: user!.teamId } });
+    const supabase = await createClient();
+    await supabase.from("events").delete().eq("id", id).eq("team_id", user!.teamId);
   }
 
   revalidatePath("/calendar");

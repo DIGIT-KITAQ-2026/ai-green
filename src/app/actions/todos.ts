@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
+import { awardXp } from "@/lib/xp";
 import { XP_RULES, TODO_DAILY_LIMIT } from "@/lib/rewards";
 
-/** ToDoはユーザーごとのものなので、必ず userId とセットで絞り込む。 */
+/** ToDoはユーザーごとのもの。RLSでも絞られるが、条件にも user_id を必ず入れる。 */
 
 export async function createTodoAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -18,14 +19,12 @@ export async function createTodoAction(formData: FormData) {
 
   if (!title) redirect(`${from}?error=${encodeURIComponent("やることを入力してください")}`);
 
-  await prisma.todo.create({
-    data: {
-      userId: user!.id,
-      title,
-      // <input type="date"> は "YYYY-MM-DD"。時刻を持たないので正午で保存し、
-      // タイムゾーンで前後の日にずれないようにする。
-      dueDate: due ? new Date(`${due}T12:00:00`) : null,
-    },
+  const supabase = await createClient();
+  await supabase.from("todos").insert({
+    user_id: user!.id,
+    title,
+    // <input type="date"> の "YYYY-MM-DD" をそのまま date 型に入れる。
+    due_date: due || null,
   });
 
   revalidatePath("/calendar");
@@ -40,9 +39,15 @@ export async function toggleTodoAction(formData: FormData) {
   const id = String(formData.get("todoId") ?? "");
   const from = String(formData.get("from") ?? "/calendar");
 
-  const todo = id
-    ? await prisma.todo.findFirst({ where: { id, userId: user!.id } })
-    : null;
+  const supabase = await createClient();
+  const { data: todo } = id
+    ? await supabase
+        .from("todos")
+        .select("id, done, xp_awarded_at")
+        .eq("id", id)
+        .eq("user_id", user!.id)
+        .maybeSingle()
+    : { data: null };
   if (!todo) redirect(from);
 
   const willBeDone = !todo!.done;
@@ -50,33 +55,30 @@ export async function toggleTodoAction(formData: FormData) {
   // 経験値は初めて完了したときだけ。チェックを外して付け直しても増えない。
   // さらに1日 TODO_DAILY_LIMIT 件まで。ToDoは自分で作って自分で消化できるので、
   // 上限が無いといちばん手軽な稼ぎ口になってしまう。
-  let awardXp = willBeDone && !todo!.xpAwardedAt;
-  if (awardXp) {
+  let awardable = willBeDone && !todo!.xp_awarded_at;
+  if (awardable) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    const awardedToday = await prisma.todo.count({
-      where: { userId: user!.id, xpAwardedAt: { gte: startOfToday } },
-    });
+    const { count } = await supabase
+      .from("todos")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user!.id)
+      .gte("xp_awarded_at", startOfToday.toISOString());
     // 上限に達した分は「まだ付けていない」ままにしておく。
     // その日の枠を使い切っただけなので、後日また対象になる。
-    awardXp = awardedToday < TODO_DAILY_LIMIT;
+    awardable = (count ?? 0) < TODO_DAILY_LIMIT;
   }
 
-  await prisma.todo.update({
-    where: { id: todo!.id },
-    data: {
+  await supabase
+    .from("todos")
+    .update({
       done: willBeDone,
-      completedAt: willBeDone ? new Date() : null,
-      ...(awardXp ? { xpAwardedAt: new Date() } : {}),
-    },
-  });
+      completed_at: willBeDone ? new Date().toISOString() : null,
+      ...(awardable ? { xp_awarded_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", todo!.id);
 
-  if (awardXp) {
-    await prisma.user.update({
-      where: { id: user!.id },
-      data: { xp: { increment: XP_RULES.todoDone } },
-    });
-  }
+  if (awardable) await awardXp(user!.id, XP_RULES.todoDone);
 
   revalidatePath("/calendar");
   revalidatePath("/", "layout");
@@ -91,7 +93,8 @@ export async function deleteTodoAction(formData: FormData) {
   const from = String(formData.get("from") ?? "/calendar");
 
   if (id) {
-    await prisma.todo.deleteMany({ where: { id, userId: user!.id } });
+    const supabase = await createClient();
+    await supabase.from("todos").delete().eq("id", id).eq("user_id", user!.id);
   }
 
   revalidatePath("/calendar");

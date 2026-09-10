@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 import { REWARDS, isUnlocked, levelInfo } from "@/lib/rewards";
 
@@ -27,10 +27,11 @@ export async function selectRewardAction(formData: FormData) {
     );
   }
 
-  await prisma.user.update({
-    where: { id: user!.id },
-    data: { selectedRewardId: reward!.id },
-  });
+  const supabase = await createClient();
+  await supabase
+    .from("profiles")
+    .update({ selected_reward_id: reward!.id })
+    .eq("id", user!.id);
 
   revalidatePath("/character");
   revalidatePath("/", "layout");

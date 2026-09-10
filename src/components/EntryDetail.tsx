@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 import { Icon } from "./IconSprite";
 import Mascot from "./Mascot";
@@ -19,10 +19,14 @@ export default async function EntryDetail({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const entry = await prisma.taskEntry.findUnique({
-    where: { id },
-    include: { team: true, createdBy: true, attachments: true },
-  });
+  const supabase = await createClient();
+  const { data: entry } = await supabase
+    .from("task_entries")
+    .select(
+      "id, title, summary, rawText:raw_text, createdAt:created_at, team:teams(name), createdBy:profiles(name), attachments(id, kind, filename)",
+    )
+    .eq("id", id)
+    .maybeSingle();
   if (!entry) notFound();
 
   return (
@@ -97,7 +101,7 @@ export default async function EntryDetail({
 
       <p className="mt-8 text-[11px] text-inkfaint">
         登録者: {entry.createdBy?.name ?? "退会したユーザー"} ／{" "}
-        {entry.createdAt.toLocaleString("ja-JP")}
+        {new Date(entry.createdAt).toLocaleString("ja-JP")}
       </p>
 
       {user.role === "admin" && (

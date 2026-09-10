@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import RegisterForm from "@/components/RegisterForm";
 
 export default async function NewTaskPage({
@@ -15,11 +15,12 @@ export default async function NewTaskPage({
   }
 
   const { error } = await searchParams;
-  const teams = await prisma.team.findMany({ orderBy: { name: "asc" } });
+  const supabase = await createClient();
+  const { data: teams } = await supabase.from("teams").select("id, name").order("name");
 
   return (
     <RegisterForm
-      teams={teams}
+      teams={teams ?? []}
       defaultTeamId={user.teamId ?? undefined}
       errorMessage={error}
     />

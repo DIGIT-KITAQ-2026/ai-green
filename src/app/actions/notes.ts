@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 
 /** メモはユーザーごとのものなので、必ず userId とセットで絞り込む。 */
@@ -28,9 +28,10 @@ export async function createNoteAction(formData: FormData) {
     redirect(`/notes?error=${encodeURIComponent("メモの内容を入力してください")}`);
   }
 
-  await prisma.note.create({
-    data: { userId: user!.id, title: noteTitle(title, body), body },
-  });
+  const supabase = await createClient();
+  await supabase
+    .from("notes")
+    .insert({ user_id: user!.id, title: noteTitle(title, body), body });
 
   revalidatePath("/notes");
   redirect("/notes");
@@ -44,19 +45,21 @@ export async function updateNoteAction(formData: FormData) {
   const title = String(formData.get("title") ?? "");
   const body = String(formData.get("body") ?? "").trim();
 
-  const note = id
-    ? await prisma.note.findFirst({ where: { id, userId: user!.id } })
-    : null;
+  const supabase = await createClient();
+  // メモは本人のものだけ。RLSでも絞られるが、ここでも user_id を付けて確認する。
+  const { data: note } = id
+    ? await supabase.from("notes").select("id").eq("id", id).eq("user_id", user!.id).maybeSingle()
+    : { data: null };
   if (!note) redirect("/notes");
 
   if (!body) {
     redirect(`/notes/${note!.id}?error=${encodeURIComponent("メモの内容を入力してください")}`);
   }
 
-  await prisma.note.update({
-    where: { id: note!.id },
-    data: { title: noteTitle(title, body), body },
-  });
+  await supabase
+    .from("notes")
+    .update({ title: noteTitle(title, body), body })
+    .eq("id", note!.id);
 
   revalidatePath("/notes");
   revalidatePath(`/notes/${note!.id}`);
@@ -69,7 +72,8 @@ export async function deleteNoteAction(formData: FormData) {
 
   const id = String(formData.get("noteId") ?? "");
   if (id) {
-    await prisma.note.deleteMany({ where: { id, userId: user!.id } });
+    const supabase = await createClient();
+    await supabase.from("notes").delete().eq("id", id).eq("user_id", user!.id);
   }
 
   revalidatePath("/notes");

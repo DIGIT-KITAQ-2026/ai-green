@@ -131,7 +131,7 @@ export default function SharedNoteCard({
               <input type="hidden" name="noteId" value={note.id} />
               <input type="hidden" name="from" value={from} />
               <ConfirmSubmitButton
-                confirmMessage={`「${note.title}」をみんなのメモから削除します。チーム全員から見えなくなります。よろしいですか？`}
+                confirmMessage={`「${note.title}」をみんなのメモから削除します。全員から見えなくなります。よろしいですか？`}
                 pendingLabel="…"
                 className="rounded-full px-2.5 py-1.5 text-xs font-bold text-inkfaint transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
               >

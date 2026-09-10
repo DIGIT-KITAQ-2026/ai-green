@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { createEventAction, deleteEventAction } from "@/app/actions/events";
 import {
   dateKey,
   formatYearMonth,
   monthRange,
+  parseDateKey,
   parseYearMonth,
   shiftMonth,
   todayKey,
@@ -38,30 +39,50 @@ export default async function CalendarPage({
   const range = monthRange(yearMonth);
   const selectedKey = day ?? todayKey();
 
-  const [events, monthTodos, noDueTodos] = await Promise.all([
+  // date列は日付だけを持つので、範囲の指定も "YYYY-MM-DD" で行う。
+  const fromKey = dateKey(range.gte);
+  const toKey = dateKey(range.lt);
+  const supabase = await createClient();
+
+  const [eventRows, monthTodoRows, noDueTodoRows] = await Promise.all([
     user.teamId
-      ? prisma.event.findMany({
-          where: { teamId: user.teamId, date: { gte: range.gte, lt: range.lt } },
-          orderBy: [{ date: "asc" }, { startTime: "asc" }],
-          include: { createdBy: { select: { name: true } } },
-        })
-      : Promise.resolve([]),
+      ? supabase
+          .from("events")
+          .select("id, title, date, startTime:start_time, note, createdBy:profiles(name)")
+          .eq("team_id", user.teamId)
+          .gte("date", fromKey)
+          .lt("date", toKey)
+          .order("date")
+          .order("start_time", { nullsFirst: true })
+      : Promise.resolve({ data: [] }),
     // カレンダーのマスと、選択日パネルの「この日が期限のToDo」に使う。
-    prisma.todo.findMany({
-      where: { userId: user.id, dueDate: { gte: range.gte, lt: range.lt } },
-      orderBy: [{ done: "asc" }, { createdAt: "asc" }],
-    }),
+    supabase
+      .from("todos")
+      .select("id, title, dueDate:due_date, done")
+      .eq("user_id", user.id)
+      .gte("due_date", fromKey)
+      .lt("due_date", toKey)
+      .order("done")
+      .order("created_at"),
     // 期限のないToDoは日付マスに置けないので、ページ下部に常時リストする。
-    prisma.todo.findMany({
-      where: { userId: user.id, dueDate: null },
-      orderBy: [{ done: "asc" }, { createdAt: "asc" }],
-    }),
+    supabase
+      .from("todos")
+      .select("id, title, dueDate:due_date, done")
+      .eq("user_id", user.id)
+      .is("due_date", null)
+      .order("done")
+      .order("created_at"),
   ]);
 
-  // where句で絞り込み済みだが、Prisma上の型は Date | null のままなので明示的に絞る。
-  const datedTodos = monthTodos.filter(
-    (t): t is typeof t & { dueDate: Date } => t.dueDate !== null,
-  );
+  // 画面側の部品は Date で日付を扱うので、ここで文字列から変換しておく。
+  const events = (eventRows.data ?? []).map((e) => ({
+    ...e,
+    date: parseDateKey(e.date),
+  }));
+  const datedTodos = (monthTodoRows.data ?? [])
+    .filter((t): t is typeof t & { dueDate: string } => t.dueDate !== null)
+    .map((t) => ({ ...t, dueDate: parseDateKey(t.dueDate) }));
+  const noDueTodos = (noDueTodoRows.data ?? []).map((t) => ({ ...t, dueDate: null }));
 
   const selected = events.filter((e) => dateKey(e.date) === selectedKey);
   const selectedTodos = datedTodos.filter((t) => dateKey(t.dueDate) === selectedKey);

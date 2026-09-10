@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import {
   updateSharedNoteAction,
   deleteSharedNoteAction,
@@ -37,31 +37,44 @@ export default async function SharedNoteDetailPage({
   const { id } = await params;
   const { error, saved } = await searchParams;
 
-  // 同じチームのメモしか開けない。
-  const note = await prisma.sharedNote.findFirst({
-    where: { id, teamId: user.teamId ?? undefined },
-    include: { author: { select: { name: true } } },
-  });
+  const supabase = await createClient();
+
+  // メモは部門を問わず読める。直せるかどうかは下の canEdit で判定する。
+  const { data: note } = await supabase
+    .from("shared_notes")
+    .select(
+      "id, title, body, createdAt:created_at, editedAt:edited_at, likeCount:like_count, authorId:author_id, sourceQuestions:source_questions, referencedTaskEntryId:referenced_task_entry_id, author:profiles(name)",
+    )
+    .eq("id", id)
+    .maybeSingle();
   if (!note) notFound();
 
-  const [entry, teams, likeCount, myLike] = await Promise.all([
+  const [entryRes, teamRes, myLikeRes] = await Promise.all([
     note.referencedTaskEntryId
-      ? prisma.taskEntry.findUnique({
-          where: { id: note.referencedTaskEntryId },
-          select: { id: true, title: true, teamId: true, team: { select: { name: true } } },
-        })
-      : Promise.resolve(null),
+      ? supabase
+          .from("task_entries")
+          .select("id, title, teamId:team_id, team:teams(name)")
+          .eq("id", note.referencedTaskEntryId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
     // 色は業務内容と同じ割り当てにするため、作成順で取る。
-    prisma.team.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.sharedNoteLike.count({ where: { noteId: note.id } }),
-    prisma.sharedNoteLike.findUnique({
-      where: { noteId_userId: { noteId: note.id, userId: user.id } },
-    }),
+    supabase.from("teams").select("id").order("created_at"),
+    // 自分が押したかどうか。他の人の分は読めないので、件数は like_count を使う。
+    supabase
+      .from("shared_note_likes")
+      .select("id")
+      .eq("note_id", note.id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
+
+  const entry = entryRes.data;
+  const likeCount = note.likeCount;
+  const myLike = myLikeRes.data;
 
   // メモ自体のチームではなく、もとの資料の部門の色を使う（業務内容の色と揃える）。
   const color =
-    (entry && buildTeamColorMap(teams.map((t) => t.id)).get(entry.teamId)) ??
+    (entry && buildTeamColorMap((teamRes.data ?? []).map((t) => t.id)).get(entry.teamId)) ??
     DEFAULT_TEAM_COLOR;
 
   const canEdit = note.authorId === user.id || user.role === "admin";
@@ -92,8 +105,8 @@ export default async function SharedNoteDetailPage({
               {entry.team.name}
             </span>
           )}
-          {author}さんが共有 ・ {FMT.format(note.createdAt)}
-          {note.editedAt && ` ／ ${FMT.format(note.editedAt)}に編集`}
+          {author}さんが共有 ・ {FMT.format(new Date(note.createdAt))}
+          {note.editedAt && ` ／ ${FMT.format(new Date(note.editedAt))}に編集`}
         </p>
       </div>
 
@@ -129,7 +142,7 @@ export default async function SharedNoteDetailPage({
             />
             <p className="mt-2 text-[11px] text-inkfaint">
               AIがまとめた文章です。内容に誤りがあれば直してください。
-              チーム全員がここを読みます。
+              全部門の人がここを読みます。
             </p>
           </div>
           <SubmitButton pendingLabel="保存中…" className="btn-primary self-end px-10">

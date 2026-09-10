@@ -2,15 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 import { parseUploadedFiles, UploadValidationError } from "@/lib/uploads";
 import { analyzeRegistration } from "@/lib/claudeAgent";
+import { saveTaskEntryAttachments, removeAttachmentFiles } from "@/lib/attachments";
 
 /**
  * 業務内容の登録画面。
  * 写真・PDFをアップロードすると、AIが内容を読み取って要約・全文テキストを
- * 生成し、TaskEntry としてデータベースに蓄積する。
+ * 生成し、task_entries としてデータベースに蓄積する。
  */
 export async function createTaskEntryAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -20,6 +21,7 @@ export async function createTaskEntryAction(formData: FormData) {
   const newPath = `${listPath}/new`;
 
   // 登録は先輩・管理者のみ。新人は閲覧のみで、直接POSTされても弾く。
+  // DB側にも同じ条件のポリシーがあるが、ここで弾いた方が案内を出せる。
   if (user!.role !== "admin") {
     redirect(`${listPath}?error=${encodeURIComponent("業務内容の登録は先輩・管理者のみ行えます")}`);
   }
@@ -28,12 +30,15 @@ export async function createTaskEntryAction(formData: FormData) {
   const teamId = String(formData.get("teamId") ?? user!.teamId ?? "");
 
   if (!title || !teamId) {
-    redirect(
-      `${newPath}?error=${encodeURIComponent("業務名とチームを入力してください")}`,
-    );
+    redirect(`${newPath}?error=${encodeURIComponent("業務名とチームを入力してください")}`);
   }
 
-  const team = await prisma.team.findUnique({ where: { id: teamId } });
+  const supabase = await createClient();
+  const { data: team } = await supabase
+    .from("teams")
+    .select("id, name")
+    .eq("id", teamId)
+    .maybeSingle();
   if (!team) {
     redirect(`${newPath}?error=${encodeURIComponent("所属チームが不正です")}`);
   }
@@ -48,9 +53,7 @@ export async function createTaskEntryAction(formData: FormData) {
   }
 
   if (!files || files.length === 0) {
-    redirect(
-      `${newPath}?error=${encodeURIComponent("画像またはPDFを1件以上添付してください")}`,
-    );
+    redirect(`${newPath}?error=${encodeURIComponent("画像またはPDFを1件以上添付してください")}`);
   }
 
   let summary: string;
@@ -70,23 +73,31 @@ export async function createTaskEntryAction(formData: FormData) {
     );
   }
 
-  await prisma.taskEntry.create({
-    data: {
+  const { data: entry, error } = await supabase
+    .from("task_entries")
+    .insert({
       title,
-      teamId: team!.id,
+      team_id: team!.id,
       summary,
-      rawText,
-      createdById: user!.id,
-      attachments: {
-        create: files!.map((f) => ({
-          kind: f.kind,
-          filename: f.filename,
-          mimeType: f.mimeType,
-          data: f.data,
-        })),
-      },
-    },
-  });
+      raw_text: rawText,
+      created_by: user!.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !entry) {
+    console.error("業務内容の登録に失敗しました", error);
+    redirect(`${newPath}?error=${encodeURIComponent("登録に失敗しました")}`);
+  }
+
+  try {
+    await saveTaskEntryAttachments(supabase, entry!.id, files!);
+  } catch (err) {
+    // ファイルを置けなかったときは、本文だけ残さず巻き戻す。
+    console.error("添付ファイルの保存に失敗しました", err);
+    await supabase.from("task_entries").delete().eq("id", entry!.id);
+    redirect(`${newPath}?error=${encodeURIComponent("添付ファイルの保存に失敗しました")}`);
+  }
 
   // 登録には経験値を付けない。登録できるのは先輩・管理者だけで、
   // 新人には手が届かない加点になってしまうため。
@@ -98,9 +109,9 @@ export async function createTaskEntryAction(formData: FormData) {
  * 業務内容を削除する。
  * チーム全員で育てるナレッジなので、先輩・管理者であれば登録者を問わず消せる
  * （登録者本人に限定すると、辞めた人の資料を整理できなくなるため）。
- * 新人(member)は閲覧のみで削除はできない。
- * Attachment.taskEntryId は任意リレーションなので、先に添付を消さないと
- * 参照だけが外れた添付が残ってしまう。必ず 添付 → 本体 の順で削除する。
+ *
+ * 添付行とチャットからの参照は外部キーの on delete（cascade / set null）が
+ * 面倒を見るので、ここで消すのは本体と Storage 上のファイルだけでよい。
  */
 export async function deleteTaskEntryAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -111,16 +122,16 @@ export async function deleteTaskEntryAction(formData: FormData) {
   }
 
   const id = String(formData.get("entryId") ?? "").trim();
-  const entry = id ? await prisma.taskEntry.findUnique({ where: { id } }) : null;
-  if (!entry) redirect("/tasks");
+  if (!id) redirect("/tasks");
 
-  await prisma.attachment.deleteMany({ where: { taskEntryId: entry!.id } });
-  // この業務内容を根拠にした回答が残っていても表示が壊れないよう、参照を外す。
-  await prisma.chatMessage.updateMany({
-    where: { referencedTaskEntryId: entry!.id },
-    data: { referencedTaskEntryId: null },
-  });
-  await prisma.taskEntry.delete({ where: { id: entry!.id } });
+  const supabase = await createClient();
+  const { data: attachments } = await supabase
+    .from("attachments")
+    .select("storage_path")
+    .eq("task_entry_id", id);
+
+  await supabase.from("task_entries").delete().eq("id", id);
+  await removeAttachmentFiles(supabase, (attachments ?? []).map((a) => a.storage_path));
 
   redirect("/tasks");
 }

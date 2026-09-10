@@ -1,18 +1,23 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { buildTeamColorMap, DEFAULT_TEAM_COLOR } from "@/lib/teamColors";
 import PageTitle from "@/components/PageTitle";
 import Mascot from "@/components/Mascot";
 import SharedNoteCard, { SharedNoteCardData } from "@/components/SharedNoteCard";
 
 /**
- * みんなのメモ。チャットで分かったことをAIが要約し、チーム全員が読めるようにした場所。
+ * みんなのメモ。チャットで分かったことをAIが要約し、全部門が読めるようにした場所。
+ *
+ * もとは自分の所属チームのメモしか出していなかったが、人事のナレッジが総務の人に
+ * 届かず、部門をまたぐ疑問（総務の人が経理の請求書ルールを見るなど）に使えなかった。
+ * 業務内容も全部門を出しているので、そちらに揃えている。
+ * 部門は「どの部門が貯めたメモか」を表す分類として、絞り込みに使う。
  *
  * 並び順は「役に立った」の多い順。誰が押したかは表示しない。
  * 自分には不要と判断したメモは、自分の画面でだけ下にまとめる
- * （チームの共有物そのものは消さない）。
+ * （共有物そのものは消さない）。
  */
 export default async function TeamNotesPage({
   searchParams,
@@ -24,44 +29,40 @@ export default async function TeamNotesPage({
 
   const { error, shared, team: selectedTeamId } = await searchParams;
 
-  const [notes, likedRows, hiddenRows, teams] = await Promise.all([
-    user.teamId
-      ? prisma.sharedNote.findMany({
-          where: { teamId: user.teamId },
-          orderBy: { createdAt: "desc" },
-          include: {
-            author: { select: { name: true } },
-            _count: { select: { likes: true } },
-          },
-        })
-      : Promise.resolve([]),
-    prisma.sharedNoteLike.findMany({
-      where: { userId: user.id },
-      select: { noteId: true },
-    }),
-    prisma.sharedNoteHide.findMany({
-      where: { userId: user.id },
-      select: { noteId: true },
-    }),
+  const supabase = await createClient();
+
+  // いいねは匿名なので、押した人の行は本人の分しか読めない。
+  // 画面に出す件数は shared_notes.like_count（トリガで同期）を使う。
+  const [noteRes, likedRes, hiddenRes, teamRes] = await Promise.all([
+    supabase
+      .from("shared_notes")
+      .select(
+        "id, title, body, createdAt:created_at, editedAt:edited_at, likeCount:like_count, authorId:author_id, referencedTaskEntryId:referenced_task_entry_id, author:profiles(name)",
+      )
+      .order("created_at", { ascending: false }),
+    supabase.from("shared_note_likes").select("note_id").eq("user_id", user.id),
+    supabase.from("shared_note_hides").select("note_id").eq("user_id", user.id),
     // 色は業務内容と同じ割り当てにするため、作成順で取る。
-    prisma.team.findMany({ orderBy: { createdAt: "asc" } }),
+    supabase.from("teams").select("id, name").order("created_at"),
   ]);
 
-  const likedIds = new Set(likedRows.map((r) => r.noteId));
-  const hiddenIds = new Set(hiddenRows.map((r) => r.noteId));
+  const notes = noteRes.data ?? [];
+  const teams = teamRes.data ?? [];
+  const likedIds = new Set((likedRes.data ?? []).map((r) => r.note_id));
+  const hiddenIds = new Set((hiddenRes.data ?? []).map((r) => r.note_id));
   const colorByTeam = buildTeamColorMap(teams.map((t) => t.id));
 
   // もとになった業務内容（色とリンクに使う）
   const entryIds = notes
     .map((n) => n.referencedTaskEntryId)
     .filter((id): id is string => Boolean(id));
-  const entries = entryIds.length
-    ? await prisma.taskEntry.findMany({
-        where: { id: { in: entryIds } },
-        select: { id: true, title: true, teamId: true, team: { select: { name: true } } },
-      })
-    : [];
-  const entryMap = new Map(entries.map((e) => [e.id, e]));
+  const { data: entries } = entryIds.length
+    ? await supabase
+        .from("task_entries")
+        .select("id, title, teamId:team_id, team:teams(name)")
+        .in("id", entryIds)
+    : { data: [] };
+  const entryMap = new Map((entries ?? []).map((e) => [e.id, e]));
 
   const cards: SharedNoteCardData[] = notes.map((n) => {
     const entry = n.referencedTaskEntryId ? entryMap.get(n.referencedTaskEntryId) : null;
@@ -69,10 +70,10 @@ export default async function TeamNotesPage({
       id: n.id,
       title: n.title,
       body: n.body,
-      createdAt: n.createdAt,
-      editedAt: n.editedAt,
+      createdAt: new Date(n.createdAt),
+      editedAt: n.editedAt ? new Date(n.editedAt) : null,
       authorName: n.author?.name ?? null,
-      likeCount: n._count.likes,
+      likeCount: n.likeCount,
       likedByMe: likedIds.has(n.id),
       hiddenByMe: hiddenIds.has(n.id),
       entry: entry
@@ -86,7 +87,7 @@ export default async function TeamNotesPage({
   });
 
   // 絞り込みは業務内容と同じく部門で行う。
-  // メモ自体のチームは全員同じなので、ここでも「もとの資料の部門」で分ける。
+  // 色分けと同じく「もとの資料の部門」で分ける。どの部門の話題かで探せるようにするため。
   // チップは実際にメモがある部門だけ出す（押しても0件になるチップを作らない）。
   const teamsWithNotes = teams
     .filter((t) => cards.some((c) => c.teamId === t.id))
@@ -116,16 +117,17 @@ export default async function TeamNotesPage({
     <div>
       <PageTitle>みんなのメモ</PageTitle>
 
-      {shared && <p className="banner-ok mb-5">チームに共有しました</p>}
+      {shared && <p className="banner-ok mb-5">みんなのメモに共有しました</p>}
       {error && <p className="banner-error mb-5">{error}</p>}
       {!user.teamId && (
-        <p className="banner-error mb-5">
-          所属が未設定のため表示できません。設定画面から所属を選んでください。
+        <p className="banner-ok mb-5">
+          読むのは所属がなくてもできます。自分のチャットを共有するには、
+          設定画面から所属を選んでください。
         </p>
       )}
 
       <p className="mb-6 max-w-2xl text-sm leading-relaxed text-inksoft">
-        チャットで分かったことを、AIが短くまとめてここに並べています。
+        チャットで分かったことを、AIが短くまとめてここに並べています。部門を問わず全部見えます。
         「役に立った」が多いものほど上に出ます。押した人の名前は誰にも表示されません。
         自分のチャットからは「
         <Link href="/chat" className="font-bold text-matcha underline underline-offset-2">
@@ -208,7 +210,7 @@ export default async function TeamNotesPage({
                 自分には不要にしたメモ（{hidden.length}件）
               </summary>
               <p className="mb-4 mt-2 text-[11px] text-inkfaint">
-                ここに下げているのはあなたの画面だけです。チームの他の人には通常どおり表示されています。
+                ここに下げているのはあなたの画面だけです。他の人には通常どおり表示されています。
               </p>
               <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {hidden.map((n) => (

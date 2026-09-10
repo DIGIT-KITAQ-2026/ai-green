@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { selectTeamAction } from "@/app/actions/onboarding";
 import AuthCard from "@/components/AuthCard";
 import PageTitle from "@/components/PageTitle";
@@ -16,7 +16,8 @@ export default async function TeamOnboardingPage({
   if (user.teamId) redirect("/");
 
   const { error } = await searchParams;
-  const teams = await prisma.team.findMany({ orderBy: { name: "asc" } });
+  const supabase = await createClient();
+  const { data: teams } = await supabase.from("teams").select("id, name").order("name");
 
   return (
     <AuthCard>
@@ -27,7 +28,7 @@ export default async function TeamOnboardingPage({
       {error && <p className="banner-error mb-5">{error}</p>}
 
       <form action={selectTeamAction} className="flex flex-col gap-5">
-        <TeamPicker teams={teams} defaultTeamId={teams[0]?.id} />
+        <TeamPicker teams={teams ?? []} defaultTeamId={teams?.[0]?.id} />
         <button type="submit" className="btn-primary self-end px-12">
           決定
         </button>

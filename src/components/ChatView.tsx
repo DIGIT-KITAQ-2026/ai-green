@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { deleteConversationAction } from "@/app/actions/chat";
 import { shareConversationAction } from "@/app/actions/sharedNotes";
 import SubmitButton from "./SubmitButton";
@@ -35,39 +35,49 @@ export default async function ChatView({
   /** 質問例から始めたときに、あらかじめ入力欄へ入れておく文章。 */
   initialText?: string;
 }) {
-  const [conversation, messages, recentEntries] = await Promise.all([
+  const supabase = await createClient();
+  const entryQuery = supabase
+    .from("task_entries")
+    .select("title")
+    .order("created_at", { ascending: false })
+    .limit(4);
+
+  const [conversationRes, messageRes, entryRes] = await Promise.all([
     conversationId
-      ? prisma.conversation.findFirst({
-          where: { id: conversationId, userId: user.id },
-          include: { sharedNote: { select: { id: true } } },
-        })
-      : Promise.resolve(null),
+      ? supabase
+          .from("conversations")
+          .select("id, title, sharedNote:shared_notes(id)")
+          .eq("id", conversationId)
+          .eq("user_id", user.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
     conversationId
-      ? prisma.chatMessage.findMany({
-          where: { conversationId, userId: user.id },
-          include: { attachments: true },
-          orderBy: { createdAt: "asc" },
-        })
-      : Promise.resolve([]),
+      ? supabase
+          .from("chat_messages")
+          .select(
+            "id, role, text, createdAt:created_at, referencedTaskEntryId:referenced_task_entry_id, attachments(id, filename)",
+          )
+          .eq("conversation_id", conversationId)
+          .eq("user_id", user.id)
+          .order("created_at")
+      : Promise.resolve({ data: [] }),
     // 質問例は実際に登録されている業務内容から作る。
     // 何も登録されていないときは例を出さない（答えられない質問を勧めないため）。
-    prisma.taskEntry.findMany({
-      where: user.teamId ? { teamId: user.teamId } : {},
-      orderBy: { createdAt: "desc" },
-      take: 4,
-      select: { title: true },
-    }),
+    user.teamId ? entryQuery.eq("team_id", user.teamId) : entryQuery,
   ]);
+
+  const conversation = conversationRes.data;
+  const messages = messageRes.data ?? [];
 
   const referencedIds = messages
     .map((m) => m.referencedTaskEntryId)
     .filter((id): id is string => Boolean(id));
-  const referenced = referencedIds.length
-    ? await prisma.taskEntry.findMany({ where: { id: { in: referencedIds } } })
-    : [];
-  const referencedMap = new Map(referenced.map((r) => [r.id, r]));
+  const { data: referenced } = referencedIds.length
+    ? await supabase.from("task_entries").select("id, title").in("id", referencedIds)
+    : { data: [] };
+  const referencedMap = new Map((referenced ?? []).map((r) => [r.id, r]));
 
-  const suggestions = recentEntries.map((e) => `${e.title}について教えて`);
+  const suggestions = (entryRes.data ?? []).map((e) => `${e.title}について教えて`);
   const greetName = user.name;
 
   let lastDate = "";
@@ -148,7 +158,7 @@ export default async function ChatView({
         initialText={initialText}
       >
         {messages.map((m) => {
-          const date = DATE_FMT.format(m.createdAt);
+          const date = DATE_FMT.format(new Date(m.createdAt));
           const showDate = date !== lastDate;
           lastDate = date;
           const ref = m.referencedTaskEntryId
@@ -167,7 +177,7 @@ export default async function ChatView({
               <ChatMessage
                 role={m.role === "user" ? "user" : "assistant"}
                 text={m.text}
-                time={TIME_FMT.format(m.createdAt)}
+                time={TIME_FMT.format(new Date(m.createdAt))}
                 attachments={m.attachments.map((a) => ({
                   id: a.id,
                   filename: a.filename,

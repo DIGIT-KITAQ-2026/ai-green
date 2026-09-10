@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
+import { downloadAttachment } from "@/lib/attachments";
 
 /** 添付ファイル（画像・PDF）の実体をログインユーザーにのみ配信する。 */
 export async function GET(
@@ -13,16 +14,25 @@ export async function GET(
   }
 
   const { id } = await params;
-  const attachment = await prisma.attachment.findUnique({
-    where: { id },
-  });
+  const supabase = await createClient();
+  const { data: attachment } = await supabase
+    .from("attachments")
+    .select("filename, mime_type, storage_path")
+    .eq("id", id)
+    .maybeSingle();
+
   if (!attachment) {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  return new NextResponse(new Uint8Array(attachment.data), {
+  const blob = await downloadAttachment(supabase, attachment.storage_path);
+  if (!blob) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  return new NextResponse(blob.stream(), {
     headers: {
-      "Content-Type": attachment.mimeType,
+      "Content-Type": attachment.mime_type,
       "Content-Disposition": `inline; filename="${encodeURIComponent(attachment.filename)}"`,
       "Cache-Control": "private, max-age=3600",
     },

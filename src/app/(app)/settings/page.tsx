@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   updateProfileAction,
   updateTeamAction,
@@ -18,6 +19,36 @@ import SettingsNav from "@/components/SettingsNav";
 import MemberManager, { ManagedMember } from "@/components/MemberManager";
 import Mascot from "@/components/Mascot";
 import PageTitle from "@/components/PageTitle";
+
+/**
+ * メンバー管理に出す一覧。
+ * ログインIDは Supabase Auth 側（auth.users のメールアドレス）にあり、
+ * profiles からは読めないので、管理用クライアントで引いて突き合わせる。
+ * 呼ぶ前に、呼び出した人が管理者であることを確認しておくこと。
+ */
+async function loadTeamMembers(teamId: string): Promise<ManagedMember[]> {
+  const supabase = await createClient();
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, name, role, isActive:is_active")
+    .eq("team_id", teamId)
+    .order("role")
+    .order("name");
+  if (!profiles) return [];
+
+  const { data: authUsers } = await createAdminClient().auth.admin.listUsers({
+    perPage: 1000,
+  });
+  const emailById = new Map((authUsers?.users ?? []).map((u) => [u.id, u.email ?? ""]));
+
+  return profiles.map((p) => ({
+    id: p.id,
+    name: p.name,
+    loginId: emailById.get(p.id) ?? "",
+    role: p.role,
+    isActive: p.isActive,
+  }));
+}
 
 const SAVED_MESSAGES: Record<string, string> = {
   profile: "氏名とIDを更新しました",
@@ -38,25 +69,35 @@ export default async function SettingsPage({
   if (!user) redirect("/login");
 
   const { saved, error } = await searchParams;
-  const teams = await prisma.team.findMany({ orderBy: { name: "asc" } });
+  const supabase = await createClient();
+  const { data: teamRows } = await supabase.from("teams").select("id, name").order("name");
+  const teams = teamRows ?? [];
 
   const isAdmin = user.role === "admin";
   const members: ManagedMember[] = isAdmin && user.teamId
-    ? await prisma.user.findMany({
-        where: { teamId: user.teamId },
-        orderBy: [{ role: "asc" }, { name: "asc" }],
-        select: {
-          id: true, name: true, loginId: true, role: true, isActive: true,
-        },
-      })
+    ? await loadTeamMembers(user.teamId)
     : [];
 
-  const [conversations, todos, notes, entries] = await Promise.all([
-    prisma.conversation.count({ where: { userId: user.id } }),
-    prisma.todo.count({ where: { userId: user.id } }),
-    prisma.note.count({ where: { userId: user.id } }),
-    prisma.taskEntry.count({ where: { createdById: user.id } }),
+  const countOf = (table: "conversations" | "todos" | "notes", column: string) =>
+    supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq(column, user.id);
+
+  const [conversationRes, todoRes, noteRes, entryRes] = await Promise.all([
+    countOf("conversations", "user_id"),
+    countOf("todos", "user_id"),
+    countOf("notes", "user_id"),
+    supabase
+      .from("task_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", user.id),
   ]);
+
+  const conversations = conversationRes.count ?? 0;
+  const todos = todoRes.count ?? 0;
+  const notes = noteRes.count ?? 0;
+  const entries = entryRes.count ?? 0;
 
   const reward = rewardById(user.selectedRewardId);
 

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { selectRewardAction } from "@/app/actions/character";
 import {
   REWARDS,
@@ -30,14 +30,26 @@ export default async function CharacterPage({
 
   // 何をどれだけやったかを出して、次に何をすれば伸びるか分かるようにする。
   // 並びは「経験値の貯まりかた」と同じにしてある。
-  const [questions, todosDone, likesReceived] = await Promise.all([
-    prisma.chatMessage.count({ where: { userId: user.id, role: "user" } }),
-    prisma.todo.count({ where: { userId: user.id, done: true } }),
-    // 自分のメモに他の人から付いたいいねの数（自分で押した分は数えない）。
-    prisma.sharedNoteLike.count({
-      where: { note: { authorId: user.id }, userId: { not: user.id } },
-    }),
+  const supabase = await createClient();
+  const [questionRes, todoRes, myNotesRes] = await Promise.all([
+    supabase
+      .from("chat_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("role", "user"),
+    supabase
+      .from("todos")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("done", true),
+    // 自分のメモに付いたいいねの数。件数は shared_notes 側に持たせてある
+    // （いいねは匿名なので、誰が押したかの行は本人以外読めない）。
+    supabase.from("shared_notes").select("like_count").eq("author_id", user.id),
   ]);
+
+  const questions = questionRes.count ?? 0;
+  const todosDone = todoRes.count ?? 0;
+  const likesReceived = (myNotesRes.data ?? []).reduce((sum, n) => sum + n.like_count, 0);
 
   const unlockedCount = REWARDS.filter((r) => isUnlocked(r, info.level)).length;
   const nextReward = REWARDS.find((r) => !isUnlocked(r, info.level));

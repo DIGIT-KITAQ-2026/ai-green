@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { createNoteAction } from "@/app/actions/notes";
 import PageTitle from "@/components/PageTitle";
 import SubmitButton from "@/components/SubmitButton";
@@ -24,10 +24,13 @@ export default async function NotesPage({
 
   const { error } = await searchParams;
 
-  const notes = await prisma.note.findMany({
-    where: { userId: user.id },
-    orderBy: { updatedAt: "desc" },
-  });
+  const supabase = await createClient();
+  const { data: rows } = await supabase
+    .from("notes")
+    .select("id, title, body, updatedAt:updated_at")
+    .eq("user_id", user.id)
+    .order("updated_at", { ascending: false });
+  const notes = rows ?? [];
 
   return (
     <div>
@@ -90,7 +93,7 @@ export default async function NotesPage({
                     {n.body}
                   </p>
                   <p className="text-[10px] text-inkfaint">
-                    {FMT.format(n.updatedAt)}
+                    {FMT.format(new Date(n.updatedAt))}
                   </p>
                 </Link>
               </li>

@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { Icon, IconName } from "@/components/IconSprite";
 import Mascot from "@/components/Mascot";
 import PageTitle from "@/components/PageTitle";
 import MonthCalendar from "@/components/MonthCalendar";
 import TodoList from "@/components/TodoList";
 import TodoQuickAdd from "@/components/TodoQuickAdd";
-import { dateKey, monthRange, parseYearMonth } from "@/lib/calendar";
+import { dateKey, monthRange, parseDateKey, parseYearMonth } from "@/lib/calendar";
 import { levelInfo, rewardById } from "@/lib/rewards";
 
 // チャットが主機能なので先頭。以降は使う頻度が高い順に並べている。
@@ -60,52 +60,88 @@ export default async function HomePage() {
   const user = await getCurrentUser();
   const yearMonth = parseYearMonth();
   const range = monthRange(yearMonth);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // date列は日付だけを持つので、範囲の指定も "YYYY-MM-DD" で行う。
+  const fromKey = dateKey(range.gte);
+  const toKey = dateKey(range.lt);
+  const todayK = dateKey(new Date());
+  const supabase = await createClient();
+  const none = Promise.resolve({ data: [], count: 0 });
 
-  const [team, monthEvents, monthTodos, upcoming, openTodos] = await Promise.all([
-    user?.teamId
-      ? prisma.team.findUnique({ where: { id: user.teamId } })
-      : Promise.resolve(null),
-    // 今月のカレンダーに印を付けるための予定。
-    user?.teamId
-      ? prisma.event.findMany({
-          where: { teamId: user.teamId, date: { gte: range.gte, lt: range.lt } },
-          orderBy: [{ date: "asc" }, { startTime: "asc" }],
-        })
-      : Promise.resolve([]),
-    // 今月のカレンダーに印を付けるための期限付きToDo。
-    user
-      ? prisma.todo.findMany({
-          where: { userId: user.id, dueDate: { gte: range.gte, lt: range.lt } },
-          orderBy: [{ done: "asc" }, { createdAt: "asc" }],
-        })
-      : Promise.resolve([]),
-    // 今日以降の直近の予定（月をまたいでも拾えるよう別に取る）。
-    user?.teamId
-      ? prisma.event.findMany({
-          where: { teamId: user.teamId, date: { gte: today } },
-          orderBy: [{ date: "asc" }, { startTime: "asc" }],
-          take: 4,
-        })
-      : Promise.resolve([]),
-    user
-      ? prisma.todo.findMany({
-          where: { userId: user.id, done: false },
-          orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-          take: 5,
-        })
-      : Promise.resolve([]),
-  ]);
+  const [teamRes, monthEventRes, monthTodoRes, upcomingRes, openTodoRes, openCountRes] =
+    await Promise.all([
+      user?.teamId
+        ? supabase.from("teams").select("name").eq("id", user.teamId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      // 今月のカレンダーに印を付けるための予定。
+      user?.teamId
+        ? supabase
+            .from("events")
+            .select("id, title, date, startTime:start_time")
+            .eq("team_id", user.teamId)
+            .gte("date", fromKey)
+            .lt("date", toKey)
+            .order("date")
+            .order("start_time", { nullsFirst: true })
+        : none,
+      // 今月のカレンダーに印を付けるための期限付きToDo。
+      user
+        ? supabase
+            .from("todos")
+            .select("id, title, dueDate:due_date, done")
+            .eq("user_id", user.id)
+            .gte("due_date", fromKey)
+            .lt("due_date", toKey)
+            .order("done")
+            .order("created_at")
+        : none,
+      // 今日以降の直近の予定（月をまたいでも拾えるよう別に取る）。
+      user?.teamId
+        ? supabase
+            .from("events")
+            .select("id, title, date, startTime:start_time")
+            .eq("team_id", user.teamId)
+            .gte("date", todayK)
+            .order("date")
+            .order("start_time", { nullsFirst: true })
+            .limit(4)
+        : none,
+      user
+        ? supabase
+            .from("todos")
+            .select("id, title, dueDate:due_date, done")
+            .eq("user_id", user.id)
+            .eq("done", false)
+            .order("due_date", { nullsFirst: false })
+            .order("created_at")
+            .limit(5)
+        : none,
+      user
+        ? supabase
+            .from("todos")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("done", false)
+        : none,
+    ]);
 
-  const openTodoCount = user
-    ? await prisma.todo.count({ where: { userId: user.id, done: false } })
-    : 0;
-
-  // where句で絞り込み済みだが、Prisma上の型は Date | null のままなので明示的に絞る。
-  const datedMonthTodos = monthTodos.flatMap((t) =>
-    t.dueDate ? [{ ...t, dueDate: t.dueDate }] : [],
-  );
+  // 画面側の部品は Date で日付を扱うので、ここで文字列から変換しておく。
+  const team = teamRes.data;
+  const monthEvents = (monthEventRes.data ?? []).map((e) => ({
+    ...e,
+    date: parseDateKey(e.date),
+  }));
+  const upcoming = (upcomingRes.data ?? []).map((e) => ({
+    ...e,
+    date: parseDateKey(e.date),
+  }));
+  const datedMonthTodos = (monthTodoRes.data ?? [])
+    .filter((t): t is typeof t & { dueDate: string } => t.dueDate !== null)
+    .map((t) => ({ ...t, dueDate: parseDateKey(t.dueDate) }));
+  const openTodos = (openTodoRes.data ?? []).map((t) => ({
+    ...t,
+    dueDate: t.dueDate ? parseDateKey(t.dueDate) : null,
+  }));
+  const openTodoCount = openCountRes.count ?? 0;
 
   const info = levelInfo(user?.xp ?? 0);
   const reward = rewardById(user?.selectedRewardId);

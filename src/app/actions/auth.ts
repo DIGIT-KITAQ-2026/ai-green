@@ -1,15 +1,16 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
-import {
-  SESSION_COOKIE,
-  SESSION_COOKIE_OPTIONS,
-  createSessionToken,
-  hashPassword,
-  verifyPassword,
-} from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/**
+ * ログイン・新規登録・ログアウト。
+ *
+ * ID とパスワードの管理は Supabase Auth に任せている。
+ * 画面上の「ログインID」は Supabase のメールアドレスにあたる。
+ * profiles の行は auth.users への insert トリガ（handle_new_user）が作る。
+ */
 
 export async function loginAction(formData: FormData) {
   const loginId = String(formData.get("loginId") ?? "").trim();
@@ -19,30 +20,45 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("IDとパスワードを入力してください")}`);
   }
 
-  const user = await prisma.user.findUnique({ where: { loginId } });
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
-    redirect(`/login?error=${encodeURIComponent("IDまたはパスワードが正しくありません")}`);
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: loginId,
+    password,
+  });
+
+  if (error || !data.user) {
+    // 管理者に停止されたアカウントは Supabase 側で弾かれる。
+    // 理由が分かる文面にして、問い合わせ先を案内する。
+    const message =
+      error?.code === "user_banned"
+        ? "このアカウントは利用が停止されています。管理者にお問い合わせください。"
+        : "IDまたはパスワードが正しくありません";
+    redirect(`/login?error=${encodeURIComponent(message)}`);
   }
-  // 管理者に停止されたアカウント。理由は明かさず、同じ文面にはしない。
-  if (!user!.isActive) {
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("team_id, is_active")
+    .eq("id", data.user!.id)
+    .single();
+
+  // 管理者に停止されたアカウント。入れたままにせず、その場でセッションを切る。
+  if (profile && !profile.is_active) {
+    await supabase.auth.signOut();
     redirect(
       `/login?error=${encodeURIComponent("このアカウントは利用が停止されています。管理者にお問い合わせください。")}`,
     );
   }
 
-  (await cookies()).set(
-    SESSION_COOKIE,
-    createSessionToken(user!.id, user!.sessionVersion),
-    SESSION_COOKIE_OPTIONS,
-  );
-
-  redirect(user!.teamId ? "/" : "/onboarding/team");
+  redirect(profile?.team_id ? "/" : "/onboarding/team");
 }
 
 export async function signupAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const loginId = String(formData.get("loginId") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  // 役割は登録時に本人が選ぶ。あとから設定 > メンバー管理でも変えられる。
+  const asAdmin = String(formData.get("role") ?? "") === "admin";
 
   if (!name || !loginId || !password) {
     redirect(`/signup?error=${encodeURIComponent("すべての項目を入力してください")}`);
@@ -51,29 +67,42 @@ export async function signupAction(formData: FormData) {
     redirect(`/signup?error=${encodeURIComponent("パスワードは8文字以上にしてください")}`);
   }
 
-  const existing = await prisma.user.findUnique({ where: { loginId } });
-  if (existing) {
-    redirect(`/signup?error=${encodeURIComponent("そのIDはすでに使われています")}`);
-  }
-
-  const user = await prisma.user.create({
-    data: {
-      name,
-      loginId,
-      passwordHash: await hashPassword(password),
-    },
+  const supabase = await createClient();
+  // name はトリガ側で profiles.name に入れるため、メタデータで渡す。
+  const { data, error } = await supabase.auth.signUp({
+    email: loginId,
+    password,
+    options: { data: { name } },
   });
 
-  (await cookies()).set(
-    SESSION_COOKIE,
-    createSessionToken(user.id, user.sessionVersion),
-    SESSION_COOKIE_OPTIONS,
-  );
+  if (error) {
+    const message =
+      error.code === "user_already_exists" || error.message.includes("already registered")
+        ? "そのIDはすでに使われています"
+        : "登録できませんでした。IDはメールアドレスの形式で入力してください。";
+    redirect(`/signup?error=${encodeURIComponent(message)}`);
+  }
+  // profiles の role は本人には変えられないようにしてあるので、
+  // 登録時に選んだ役割は管理用クライアントから付ける。
+  if (asAdmin && data.user) {
+    await createAdminClient()
+      .from("profiles")
+      .update({ role: "admin" })
+      .eq("id", data.user.id);
+  }
+
+  if (!data.session) {
+    // メール確認が有効な環境ではここに来る。
+    redirect(
+      `/login?error=${encodeURIComponent("確認メールを送りました。メール内のリンクを開いてからログインしてください。")}`,
+    );
+  }
 
   redirect("/onboarding/team");
 }
 
 export async function logoutAction() {
-  (await cookies()).delete(SESSION_COOKIE);
+  const supabase = await createClient();
+  await supabase.auth.signOut();
   redirect("/login");
 }

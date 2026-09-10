@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { updateNoteAction, deleteNoteAction } from "@/app/actions/notes";
 import { Icon } from "@/components/IconSprite";
 import SubmitButton from "@/components/SubmitButton";
@@ -30,9 +30,13 @@ export default async function NoteDetailPage({
   const { error, saved } = await searchParams;
 
   // 他人のメモは開けないよう、必ず userId とセットで確認する。
-  const note = await prisma.note.findFirst({
-    where: { id, userId: user.id },
-  });
+  const supabase = await createClient();
+  const { data: note } = await supabase
+    .from("notes")
+    .select("id, title, body, createdAt:created_at, updatedAt:updated_at")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
   if (!note) notFound();
 
   return (
@@ -46,7 +50,7 @@ export default async function NoteDetailPage({
           メモ一覧
         </Link>
         <p className="text-[11px] text-inkfaint">
-          最終更新 {FMT.format(note.updatedAt)}
+          最終更新 {FMT.format(new Date(note.updatedAt))}
         </p>
       </div>
 

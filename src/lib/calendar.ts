@@ -14,6 +14,16 @@ export function dateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * "YYYY-MM-DD" をローカル日付の Date にする。
+ * new Date("2026-09-09") はUTCの0時と解釈され、タイムゾーンによっては
+ * 前日にずれるため、そちらは使わない。
+ */
+export function parseDateKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
 export function todayKey(): string {
   return dateKey(new Date());
 }

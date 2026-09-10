@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import ChatView from "@/components/ChatView";
 
 /** 過去の会話を開いて続きから話す画面。 */
@@ -18,10 +18,13 @@ export default async function ConversationPage({
   const { error } = await searchParams;
 
   // 他人の会話は開けないよう、必ず userId とセットで確認する。
-  const conversation = await prisma.conversation.findFirst({
-    where: { id, userId: user.id },
-    select: { id: true },
-  });
+  const supabase = await createClient();
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
   if (!conversation) notFound();
 
   return <ChatView user={user} conversationId={conversation.id} error={error} />;

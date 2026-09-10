@@ -1,4 +1,4 @@
-import { prisma } from "./db";
+import { createClient } from "./supabase/server";
 
 const TOP_N = 5;
 const NO_REFERENCE_LABEL = "参照なし";
@@ -21,36 +21,38 @@ export type QuestionTrend = {
  * 上位5件だけを個別表示し、残りは「その他」にまとめる。
  * 参照先が無かった質問（AIが該当なしと答えたもの）も「参照なし」として数える
  * ―― これを抜くと割合が実態より高く出てしまうため。
+ *
+ * 集計はDBの question_trend 関数に任せている。チャットの本文は本人しか
+ * 読めないようにしてあるので、先輩・管理者がメンバーのグラフを見るときも
+ * 「どの資料を何回参照したか」だけが返り、質問文や回答文は渡らない。
  */
 export async function computeQuestionTrend(userId: string): Promise<QuestionTrend> {
-  const messages = await prisma.chatMessage.findMany({
-    where: { userId, role: "assistant" },
-    select: { referencedTaskEntryId: true },
+  const supabase = await createClient();
+  const { data: rows, error } = await supabase.rpc("question_trend", {
+    p_user_id: userId,
   });
+  if (error || !rows) return { items: [], total: 0 };
 
-  const total = messages.length;
+  const total = rows.reduce((sum, r) => sum + Number(r.count), 0);
   if (total === 0) return { items: [], total: 0 };
 
   const countByEntryId = new Map<string, number>();
   let noReference = 0;
-  for (const m of messages) {
-    if (!m.referencedTaskEntryId) {
-      noReference++;
+  for (const r of rows) {
+    if (!r.referenced_task_entry_id) {
+      noReference += Number(r.count);
       continue;
     }
-    countByEntryId.set(
-      m.referencedTaskEntryId,
-      (countByEntryId.get(m.referencedTaskEntryId) ?? 0) + 1,
-    );
+    countByEntryId.set(r.referenced_task_entry_id, Number(r.count));
   }
 
-  const entries = countByEntryId.size
-    ? await prisma.taskEntry.findMany({
-        where: { id: { in: [...countByEntryId.keys()] } },
-        select: { id: true, title: true },
-      })
-    : [];
-  const titleById = new Map(entries.map((e) => [e.id, e.title]));
+  const { data: entries } = countByEntryId.size
+    ? await supabase
+        .from("task_entries")
+        .select("id, title")
+        .in("id", [...countByEntryId.keys()])
+    : { data: [] };
+  const titleById = new Map((entries ?? []).map((e) => [e.id, e.title]));
 
   type Bucket = { label: string; count: number };
   const buckets: Bucket[] = [...countByEntryId.entries()].map(([id, count]) => ({

@@ -1,27 +1,38 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
-import {
-  SESSION_COOKIE,
-  SESSION_COOKIE_OPTIONS,
-  createSessionToken,
-  getCurrentUser,
-  hashPassword,
-  verifyPassword,
-} from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function updateTeamAction(formData: FormData) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const teamId = String(formData.get("teamId") ?? "");
-  const team = teamId ? await prisma.team.findUnique({ where: { id: teamId } }) : null;
+  const supabase = await createClient();
+
+  const { data: team } = teamId
+    ? await supabase.from("teams").select("id").eq("id", teamId).maybeSingle()
+    : { data: null };
   if (!team) redirect("/settings?error=所属を選択してください");
 
-  await prisma.user.update({ where: { id: user!.id }, data: { teamId: team!.id } });
+  await supabase.from("profiles").update({ team_id: team!.id }).eq("id", user!.id);
   redirect("/settings?saved=team");
+}
+
+/**
+ * 現在のパスワードを確かめる。
+ * Supabase には「今のパスワードが合っているか」だけを見るAPIが無いので、
+ * 同じIDでログインし直せるかどうかで確認している。
+ */
+async function verifyCurrentPassword(loginId: string, password: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({
+    email: loginId,
+    password,
+  });
+  return !error;
 }
 
 export async function changePasswordAction(formData: FormData) {
@@ -31,35 +42,24 @@ export async function changePasswordAction(formData: FormData) {
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
 
-  if (!(await verifyPassword(currentPassword, user!.passwordHash))) {
+  if (!(await verifyCurrentPassword(user!.loginId, currentPassword))) {
     redirect(`/settings?error=${encodeURIComponent("現在のパスワードが正しくありません")}`);
   }
   if (newPassword.length < 8) {
     redirect(`/settings?error=${encodeURIComponent("新しいパスワードは8文字以上にしてください")}`);
   }
 
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) {
+    redirect(`/settings?error=${encodeURIComponent("パスワードを変更できませんでした")}`);
+  }
+
   // パスワードを変えたら、他の端末に残っているセッションも切る。
-  const updated = await prisma.user.update({
-    where: { id: user!.id },
-    data: {
-      passwordHash: await hashPassword(newPassword),
-      sessionVersion: { increment: 1 },
-    },
-  });
-  // 世代を進めると今のCookieも無効になるので、自分の分だけ貼り直す。
-  await reissueSession(updated.id, updated.sessionVersion);
+  // 操作した端末は scope: "others" なのでログインしたまま残る。
+  await supabase.auth.signOut({ scope: "others" });
 
   redirect("/settings?saved=password");
-}
-
-/** 世代を進めたあと、操作した本人だけログインを保てるようCookieを貼り直す。 */
-async function reissueSession(userId: string, sessionVersion: number) {
-  const cookieStore = await cookies();
-  cookieStore.set(
-    SESSION_COOKIE,
-    createSessionToken(userId, sessionVersion),
-    SESSION_COOKIE_OPTIONS,
-  );
 }
 
 /** 氏名とログインIDを変更する。改姓やメールアドレスの変更に対応するため。 */
@@ -73,35 +73,36 @@ export async function updateProfileAction(formData: FormData) {
   if (!name || !loginId) {
     redirect(`/settings?error=${encodeURIComponent("氏名とIDを入力してください")}`);
   }
+
+  const supabase = await createClient();
+  await supabase.from("profiles").update({ name }).eq("id", user!.id);
+
   if (loginId !== user!.loginId) {
-    const taken = await prisma.user.findUnique({ where: { loginId } });
-    if (taken) {
-      redirect(`/settings?error=${encodeURIComponent("そのIDはすでに使われています")}`);
+    // ログインIDは Supabase Auth 側のメールアドレス。
+    // メール確認が有効な環境では、確認が済むまで古いIDのままになる。
+    const { error } = await supabase.auth.updateUser({ email: loginId });
+    if (error) {
+      const message = error.message.includes("already")
+        ? "そのIDはすでに使われています"
+        : "IDを変更できませんでした。メールアドレスの形式で入力してください。";
+      redirect(`/settings?error=${encodeURIComponent(message)}`);
     }
   }
-
-  await prisma.user.update({
-    where: { id: user!.id },
-    data: { name, loginId },
-  });
 
   redirect("/settings?saved=profile");
 }
 
 /**
  * 他の端末のセッションを切る。
- * セッションはDBに持たない署名付きCookie方式なので、世代を1つ進めることで
- * 発行済みのトークンをまとめて無効にする。操作した端末だけ貼り直して残す。
+ * Supabase 側で発行済みのリフレッシュトークンを失効させる。
+ * 操作した端末は scope: "others" なので残る。
  */
 export async function revokeOtherSessionsAction() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const updated = await prisma.user.update({
-    where: { id: user!.id },
-    data: { sessionVersion: { increment: 1 } },
-  });
-  await reissueSession(updated.id, updated.sessionVersion);
+  const supabase = await createClient();
+  await supabase.auth.signOut({ scope: "others" });
 
   redirect("/settings?saved=sessions");
 }
@@ -122,12 +123,16 @@ export async function updateMemberRoleAction(formData: FormData) {
     redirect(`/settings?error=${encodeURIComponent("自分の権限は変更できません")}`);
   }
 
-  const target = await prisma.user.findFirst({
-    where: { id: userId, teamId: admin!.teamId ?? undefined },
-  });
+  const supabase = await createClient();
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .eq("team_id", admin!.teamId ?? "")
+    .maybeSingle();
   if (!target) redirect("/settings");
 
-  await prisma.user.update({ where: { id: target!.id }, data: { role } });
+  await supabase.from("profiles").update({ role }).eq("id", target!.id);
   redirect("/settings?saved=role");
 }
 
@@ -135,7 +140,10 @@ export async function updateMemberRoleAction(formData: FormData) {
  * 管理者が、同じチームのメンバーの利用を止める／再開する。
  * 退職者のアカウントを止めるための機能。削除ではないので、
  * その人が書いた共有メモなどの記録は残る。
- * 止めた相手はすぐ入れなくなる（getCurrentUser が isActive を見ている）。
+ *
+ * profiles.is_active は画面表示と getCurrentUser の判定に使い、
+ * それとは別に Supabase Auth 側でも ban して、ログイン中の端末をその場で
+ * 締め出す（フラグだけでは、発行済みのトークンが期限まで生き残るため）。
  */
 export async function updateMemberActiveAction(formData: FormData) {
   const admin = await getCurrentUser();
@@ -149,17 +157,20 @@ export async function updateMemberActiveAction(formData: FormData) {
     redirect(`/settings?error=${encodeURIComponent("自分のアカウントは停止できません")}`);
   }
 
-  const target = await prisma.user.findFirst({
-    where: { id: userId, teamId: admin!.teamId ?? undefined },
-  });
+  const supabase = await createClient();
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .eq("team_id", admin!.teamId ?? "")
+    .maybeSingle();
   if (!target) redirect("/settings");
 
-  await prisma.user.update({
-    where: { id: target!.id },
-    // 止めるときは世代も進め、ログイン中の端末をその場で締め出す。
-    data: active
-      ? { isActive: true }
-      : { isActive: false, sessionVersion: { increment: 1 } },
+  await supabase.from("profiles").update({ is_active: active }).eq("id", target!.id);
+
+  // ban / 解除は本人としては実行できないので、管理用クライアントから行う。
+  await createAdminClient().auth.admin.updateUserById(target!.id, {
+    ban_duration: active ? "none" : "876000h", // 100年 ≒ 無期限
   });
 
   redirect(`/settings?saved=${active ? "reactivated" : "deactivated"}`);
@@ -169,9 +180,13 @@ export async function updateMemberActiveAction(formData: FormData) {
  * アカウントを削除する（退会）。取り消せない操作なので、パスワードの再入力を必須にしている。
  *
  * 消すのは「その人だけのもの」に限る。
- *   削除する … チャットの会話・メッセージとその添付、ToDo、メモ
- *   残す     … 業務内容、カレンダーの予定（チーム全員で使う資料のため）
+ *   削除する … チャットの会話・メッセージとその添付、ToDo、メモ、いいね、非表示
+ *   残す     … 業務内容、カレンダーの予定、みんなのメモ（チーム全員で使うため）
  * 残すものは登録者を null にして「退会したユーザー」と表示する。
+ *
+ * この振り分けは外部キーの on delete（cascade / set null）に持たせてあるので、
+ * auth.users を1行消せばDB側でまとめて処理される。
+ * 途中で失敗して中途半端な状態になることがない。
  */
 export async function deleteAccountAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -181,44 +196,17 @@ export async function deleteAccountAction(formData: FormData) {
   if (!password) {
     redirect(`/settings?error=${encodeURIComponent("パスワードを入力してください")}`);
   }
-  if (!(await verifyPassword(password, user!.passwordHash))) {
+  if (!(await verifyCurrentPassword(user!.loginId, password))) {
     redirect(`/settings?error=${encodeURIComponent("パスワードが正しくありません")}`);
   }
 
-  const userId = user!.id;
+  const { error } = await createAdminClient().auth.admin.deleteUser(user!.id);
+  if (error) {
+    redirect(`/settings?error=${encodeURIComponent("アカウントを削除できませんでした")}`);
+  }
 
-  // 途中で失敗すると「個人データだけ消えてアカウントは残る」中途半端な状態に
-  // なるため、一連の削除はトランザクションでまとめて実行する。
-  await prisma.$transaction(async (tx) => {
-    // 1. 本人だけのデータを消す（添付 → メッセージ → 会話 の順。順番を守らないと
-    //    参照だけが外れた添付が残る）
-    await tx.attachment.deleteMany({ where: { chatMessage: { userId } } });
-    await tx.chatMessage.deleteMany({ where: { userId } });
-    await tx.conversation.deleteMany({ where: { userId } });
-    await tx.todo.deleteMany({ where: { userId } });
-    await tx.note.deleteMany({ where: { userId } });
-    // みんなのメモへのいいね・非表示は本人だけのものなので一緒に消す。
-    await tx.sharedNoteLike.deleteMany({ where: { userId } });
-    await tx.sharedNoteHide.deleteMany({ where: { userId } });
-
-    // 2. チームで共有しているものは消さず、登録者だけ外す
-    await tx.taskEntry.updateMany({
-      where: { createdById: userId },
-      data: { createdById: null },
-    });
-    await tx.event.updateMany({
-      where: { createdById: userId },
-      data: { createdById: null },
-    });
-
-    // 3. アカウント本体を消す
-    await tx.user.delete({ where: { id: userId } });
-  });
-
-  // セッションを破棄する
-
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE);
+  const supabase = await createClient();
+  await supabase.auth.signOut();
 
   redirect(`/login?error=${encodeURIComponent("アカウントを削除しました。ご利用ありがとうございました。")}`);
 }

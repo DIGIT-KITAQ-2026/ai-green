@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { computeQuestionTrend } from "@/lib/questionTrends";
 import { Icon } from "@/components/IconSprite";
 import Mascot from "@/components/Mascot";
@@ -22,40 +22,60 @@ export default async function ChatHomePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [conversations, recentEntries, myTrend, teamMembers] = await Promise.all([
-    prisma.conversation.findMany({
-      where: { userId: user.id },
-      orderBy: { updatedAt: "desc" },
-      include: {
-        _count: { select: { messages: true } },
-        // 「みんなのメモ」に共有済みかどうかを一覧に出す
-        sharedNote: { select: { id: true } },
-        // カードに出す「最後のやり取り」の分だけ取る。
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { text: true },
-        },
-      },
-    }),
+  const supabase = await createClient();
+  const [conversationRes, entryRes, myTrend, memberRes] = await Promise.all([
+    // カードに出すのは最後のやり取りだけなので、本文は1件に絞って持ってくる。
+    // 件数は別に数える（同じテーブルを件数と本文の両方で埋め込むと、
+    // 並べ替えと集計がぶつかってPostgRESTがエラーになるため）。
+    supabase
+      .from("conversations")
+      .select(
+        "id, title, updatedAt:updated_at, messages:chat_messages(text), sharedNote:shared_notes(id)",
+      )
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .order("created_at", { referencedTable: "chat_messages", ascending: false })
+      .limit(1, { referencedTable: "chat_messages" }),
     // 質問例は実際に登録されている業務内容から作る。
     // 何も登録されていないときは例を出さない（答えられない質問を勧めないため）。
-    prisma.taskEntry.findMany({
-      where: user.teamId ? { teamId: user.teamId } : {},
-      orderBy: { createdAt: "desc" },
-      take: 4,
-      select: { title: true },
-    }),
+    user.teamId
+      ? supabase
+          .from("task_entries")
+          .select("title")
+          .eq("team_id", user.teamId)
+          .order("created_at", { ascending: false })
+          .limit(4)
+      : supabase
+          .from("task_entries")
+          .select("title")
+          .order("created_at", { ascending: false })
+          .limit(4),
     computeQuestionTrend(user.id),
     // admin専用: 同じチームのmember一覧（メンバーごとの質問傾向グラフ用）。
     user.role === "admin" && user.teamId
-      ? prisma.user.findMany({
-          where: { teamId: user.teamId, role: "member" },
-          orderBy: { name: "asc" },
-        })
-      : Promise.resolve([]),
+      ? supabase
+          .from("profiles")
+          .select("id, name")
+          .eq("team_id", user.teamId)
+          .eq("role", "member")
+          .order("name")
+      : Promise.resolve({ data: [] }),
   ]);
 
+  // 会話ごとのやり取りの件数。自分の分しか読めないので、まとめて数える。
+  const { data: messageRows } = await supabase
+    .from("chat_messages")
+    .select("conversation_id")
+    .eq("user_id", user.id);
+  const messageCountByConversation = new Map<string, number>();
+  for (const m of messageRows ?? []) {
+    messageCountByConversation.set(
+      m.conversation_id,
+      (messageCountByConversation.get(m.conversation_id) ?? 0) + 1,
+    );
+  }
+
+  const teamMembers = memberRes.data ?? [];
   const memberTrends =
     teamMembers.length > 0
       ? await Promise.all(
@@ -66,16 +86,16 @@ export default async function ChatHomePage() {
         )
       : [];
 
-  const summaries: ConversationSummary[] = conversations.map((c) => ({
+  const summaries: ConversationSummary[] = (conversationRes.data ?? []).map((c) => ({
     id: c.id,
     title: c.title,
-    updatedAt: c.updatedAt,
-    messageCount: c._count.messages,
+    updatedAt: new Date(c.updatedAt),
+    messageCount: messageCountByConversation.get(c.id) ?? 0,
     lastMessage: c.messages[0]?.text ?? "",
     isShared: c.sharedNote !== null,
   }));
 
-  const suggestions = recentEntries.map((e) => `${e.title}について教えて`);
+  const suggestions = (entryRes.data ?? []).map((e) => `${e.title}について教えて`);
   const greetName = user.name;
 
   return (
