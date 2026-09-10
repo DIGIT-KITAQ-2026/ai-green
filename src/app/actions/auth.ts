@@ -76,10 +76,16 @@ export async function signupAction(formData: FormData) {
   });
 
   if (error) {
-    const message =
-      error.code === "user_already_exists" || error.message.includes("already registered")
-        ? "そのIDはすでに使われています"
-        : "登録できませんでした。IDはメールアドレスの形式で入力してください。";
+    // Supabaseの確認メール送信には送信元(anthropic-ai/claude-agent-sdk)ごとの
+    // レート制限があり、テストの繰り返し等で上限に達するとここに来る。
+    // 「メール形式が違う」と誤解させないよう、原因が分かる文面にする。
+    let message = "登録できませんでした。IDはメールアドレスの形式で入力してください。";
+    if (error.code === "user_already_exists" || error.message.includes("already registered")) {
+      message = "そのIDはすでに使われています";
+    } else if (error.code === "over_email_send_rate_limit") {
+      message =
+        "確認メールの送信回数が上限に達しています。しばらく時間をおいて再度お試しください。";
+    }
     redirect(`/signup?error=${encodeURIComponent(message)}`);
   }
   // profiles の role は本人には変えられないようにしてあるので、
