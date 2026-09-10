@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:seed": "tsx --env-file=.env.local supabase/seed.ts",
+    "db:seed": "tsx --env-file=.env --env-file=.env.local supabase/seed.ts",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts"
   },

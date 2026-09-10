@@ -36,65 +36,71 @@ MVP実装として、文字bi-gramによる簡易な類似度スコアリング�
 npm install
 ```
 
-### 1. Supabase を用意する
+### 1. Supabase に繋ぐ
 
-**クラウド（推奨・Docker不要）とローカル（Docker必要）のどちらでも動きます。**
-チームで開発するなら全員が同じデータを見られるクラウドが向いています。
+**接続先はクラウドのSupabaseです。Dockerは要りません。**
+URLとanonキーはリポジトリの `.env` に入っているので、各自が用意するのは
+`SUPABASE_SERVICE_ROLE_KEY` の1行だけです。
 
 ```bash
 cp .env.example .env.local
 ```
 
-#### クラウドに繋ぐ場合
-
-[Supabaseダッシュボード](https://supabase.com/dashboard)でプロジェクトを作り、
-Project Settings > API の値を `.env.local` に入れます。
+`.env.local` を開いて、班で共有しているキーを貼ります。
 
 ```
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=（anon public）
-SUPABASE_SERVICE_ROLE_KEY=（service_role）
+SUPABASE_SERVICE_ROLE_KEY=（Slackで共有しているキー）
 ```
 
-スキーマの適用方法は2つあります。どちらでも結果は同じです。
+これで終わりです。スキーマもデータも投入済みなので、`npm run dev` で動きます。
+
+<details>
+<summary>なぜ .env と .env.local に分かれているのか</summary>
+
+`NEXT_PUBLIC_` が付いた変数は、ビルド時にブラウザ向けのJSへそのまま埋め込まれます。
+つまりアプリを開いた人には元から見えているので、リポジトリに入れても増えるリスクはありません。
+データを守っているのはこの鍵ではなく、Supabase側のRLS（行レベルセキュリティ）です。
+
+`SUPABASE_SERVICE_ROLE_KEY` はRLSを一切通しません。漏れると誰でも全ユーザーのチャットを
+読めて、データもアカウントも消せます。このリポジトリは公開なので、こちらは
+`.env.local`（`.gitignore` 済み）に置き、コミットしません。
+
+Next.jsは `.env.local` を `.env` より優先して読むので、手元で別のSupabaseプロジェクトに
+繋ぎたいときは `.env.local` にURLとanonキーを書けば上書きできます。
+
+</details>
+
+#### 自分でSupabaseプロジェクトを立て直す場合
+
+Project Settings > API の3つの値を `.env.local` に入れ、スキーマを適用します。
 
 - **CLI**（Docker不要）: `supabase login` → `supabase link --project-ref xxxx` → `supabase db push`
 - **ダッシュボード**: `supabase/migrations/` のSQLをファイル名の順に SQL Editor へ貼って実行する
 
-#### ローカルで動かす場合
+そのあと `npm run db:seed` で初期データが入ります。
+
+#### ローカルのSupabaseで動かす場合
 
 Docker と [Supabase CLI](https://supabase.com/docs/guides/cli) が必要です。
+`supabase start` が表示する `API URL` / `ANON_KEY` / `SERVICE_ROLE_KEY` を
+`.env.local` に書けば、`.env` の値を上書きしてローカルに繋がります。
+マイグレーションは `supabase start` / `npm run db:reset` の時点で自動適用されます。
 
-```bash
-supabase start
-```
-
-起動時に表示される `API URL` / `ANON_KEY` / `SERVICE_ROLE_KEY` を `.env.local` に書きます。
-マイグレーションは `supabase start` / `npm run db:reset` の時点で自動的に適用されます。
-
-```
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_ANON_KEY=（start が表示した ANON_KEY）
-SUPABASE_SERVICE_ROLE_KEY=（start が表示した SERVICE_ROLE_KEY）
-```
-
-`SUPABASE_SERVICE_ROLE_KEY` はRLSを通さない鍵なので、サーバー側だけで使い、
-絶対に公開しないでください（このアプリではアカウント削除・利用停止・シード投入にのみ使っています）。
-`.env.local` は `.gitignore` 済みです。
+### 2. AIのログイン
 
 AIを使う機能（チャット回答・登録内容の解析）を動かすには、**このアプリを実行する
-マシン上で事前に一度だけ** `claude login` を実行し、Claude Codeにログインしておいて
-ください。ANTHROPIC_API_KEYの設定は不要です。ログインしていない場合でもアプリ自体は
-動作しますが、AI関連の処理は「AIに接続できませんでした」という案内が表示されます。
+マシン上で事前に一度だけ** `claude login` を実行しておいてください。
+ANTHROPIC_API_KEYの設定は不要です。ログインしていない場合でもアプリ自体は動きますが、
+AI関連の処理は「AIに接続できませんでした」という案内が表示されます。
 
 ```bash
 claude login
 ```
 
-### 2. スキーマと初期データ
+### 3. スキーマと初期データ
 
-スキーマは `supabase/migrations/` のSQLで作られます。上の手順で適用済みなら、
-あとは初期データを流すだけです（クラウド・ローカルどちらでも同じコマンドです）。
+**班で共有しているクラウドに繋ぐ場合、この節は不要です**（スキーマもデータも投入済み）。
+Supabaseプロジェクトを新しく立てたときや、ローカルで動かすときだけ実行してください。
 
 ```bash
 npm run db:seed
