@@ -1,141 +1,167 @@
-# 新-cha-
+# 新-cha-（しんちゃ）
 
-[仕様書.md](./仕様書.md) の内容に沿って実装した、新人向け業務内容サポートアプリです。
-チャット・写真・PDFを送るだけでAI（Claude）が業務内容を読み取り、社内に蓄積された
-業務内容から適切なものを選んで回答します。PCのWebブラウザからアクセスする前提の
-Webアプリです。
+総務・人事・経理・法務といったコーポレート部門の新人が、社内の規程や手続きをAIに質問できる
+社内ナレッジアプリです。
+
+新人は、わからないことをチャットで聞くか、手元の書類の写真やPDFを送るだけで答えが得られます。
+先輩社員は、業務手順の資料を写真やPDFのままアップロードするだけでナレッジを登録できます。
+AI（Claude）が資料を読み取って蓄積し、質問に対しては蓄積された業務内容から根拠を選んで回答します。
+PCのWebブラウザで使う業務システムとして設計しています。
+
+**デモ**: https://shincha.izumikeitarou80.workers.dev （ID `demo@shincha.local` / パスワード `password123`）
+
+## 制作の経緯
+
+北九州市主催の学生向けIT実践プログラム「[DIG IT KITAQ](https://dig-it-kitaq.jp/)」のハッカソンで、
+6名のチームで制作し、準優勝しました。
+
+## 主な機能
+
+- **業務内容の登録とAI読み取り** … 先輩・管理者が画像（jpg/png）やPDFをアップロードすると、
+  AIが内容を全文書き起こし、一覧用の要約を作ります。
+- **チャットでの質問** … 新人の質問（添付ファイルも可）に対し、登録済みの業務内容から関連するものを
+  選んで回答し、根拠にした業務内容へのリンクを示します。資料に書かれていないことは答えません。
+  過去の会話を開いて続きを聞くこともできます。
+- **みんなのメモ** … 役に立ったチャットのやり取りを、AIが「誰が聞いたか」を除いた共有メモに要約し、
+  同じ部門のメンバーに共有できます。いいねと絞り込みに対応しています。
+- **カレンダー・ToDo・個人メモ** … 部門の予定の共有と、自分用のToDo・メモ。
+- **キャラクターと経験値** … 質問やToDoの完了で経験値がたまり、レベルに応じてAIの案内役の
+  キャラクター（話し方）が増えます。口調は変わっても、回答の内容と正確さは変わらないようにしています。
+- **役割ごとの権限** … 新人と先輩・管理者で操作できる範囲を分けています。先輩・管理者は
+  業務内容の登録・削除、メンバー管理、メンバーの質問傾向（どの資料をよく参照したか）の確認ができます。
+
+### 画面一覧
+
+| 画面 | URL |
+|---|---|
+| ログイン・新規登録 | `/login`, `/signup` |
+| 所属部門の選択 | `/onboarding/team`（新規登録直後）、`/settings`（変更） |
+| ホーム | `/` |
+| 業務内容（一覧・詳細・登録） | `/tasks`, `/tasks/[id]`, `/tasks/new` |
+| チャット | `/chat`, `/chat/[id]` |
+| みんなのメモ | `/team-notes`, `/team-notes/[id]` |
+| カレンダー・ToDo | `/calendar` |
+| 個人メモ | `/notes` |
+| キャラクター | `/character` |
+| 設定 | `/settings` |
 
 ## 技術構成
 
 | 領域 | 採用技術 |
 |---|---|
-| フレームワーク | Next.js 16（App Router）+ TypeScript |
-| スタイル | Tailwind CSS（仕様書のトーン＆マナーに合わせた茶色・宇治抹茶色パレット） |
+| フレームワーク | Next.js 16（App Router, Server Actions）+ TypeScript |
+| スタイル | Tailwind CSS（お茶をモチーフにした茶色・抹茶色のパレット） |
 | データベース | Supabase（PostgreSQL）。テーブルはRLS（行レベルセキュリティ）で保護 |
 | ファイル | Supabase Storage（`attachments` バケット）。画像・PDFの実体はここに置く |
 | 認証 | Supabase Auth（メールアドレス＋パスワード） |
-| AI | Claude Agent SDK（`@anthropic-ai/claude-agent-sdk`）経由でClaude Codeを起動 |
+| AI | Anthropic API（Claude）。`@anthropic-ai/sdk` から呼び出す |
 
-**AIの呼び出し方針**：従量課金のAnthropic API（`ANTHROPIC_API_KEY`）は使用しません。
-代わりに [src/lib/claudeAgent.ts](./src/lib/claudeAgent.ts) で `@anthropic-ai/claude-agent-sdk`
-の `query()` を使い、アプリからClaude Code本体を1回限りのセッションとして起動しています。
-認証はこのアプリを動かすマシンにログイン済みのClaude Codeセッション（`claude login`、
-サブスクリプション認証）をそのまま利用します。呼び出しごとにツール（ファイル操作・Bash等）は
-すべて無効化し、プロジェクト設定（CLAUDE.md等）も読み込まない隔離モードにしているため、
-単発の質問応答・資料読み取り以外のことはできないようにしています。
+### AIの使い方
 
-仕様書10章の「AI連携仕様」に対応する部分は [src/lib/claudeAgent.ts](./src/lib/claudeAgent.ts) に実装しています。
-候補の絞り込み（本来はベクトル検索/RAGを想定）は、外部の埋め込みAPIを追加しない
-MVP実装として、文字bi-gramによる簡易な類似度スコアリングで代替しています
-（[src/lib/retrieval.ts](./src/lib/retrieval.ts)）。将来的に本格的なベクトルDBへ
-差し替える場合も、呼び出し側のインターフェースは変更不要です。
+AIの呼び出しは [src/lib/claudeAgent.ts](./src/lib/claudeAgent.ts) にまとめています。
+使う場面は次の3つで、どれも1回の問い合わせで完結し、結果はJSONで受け取ります。
+
+1. 登録された資料（画像・PDF）の書き起こしと要約
+2. チャットの質問への回答と、根拠にした業務内容の選択
+3. チャットのやり取りを共有メモに要約
+
+社内規程を扱うため、プロンプトでは「期限・金額・承認者などの条件を省略しない」
+「候補に書かれていないことを答えない」ことを全キャラクター共通の指示にしています。
+
+回答の根拠になる業務内容の候補は、質問文との文字bi-gramの類似度で絞り込んでから
+AIに渡しています（[src/lib/retrieval.ts](./src/lib/retrieval.ts)）。外部の埋め込みAPIを使わない
+軽量な実装で、ベクトル検索に差し替える場合も呼び出し側のインターフェースは変わりません。
 
 ## セットアップ
+
+必要なもの：Node.js 20以上、Supabaseプロジェクト、Anthropic APIキー。
 
 ```bash
 npm install
 ```
 
-### 1. Supabase に繋ぐ
+### 1. Supabaseプロジェクトを用意する
 
-**接続先はクラウドのSupabaseです。Dockerは要りません。**
-URLとanonキーはリポジトリの `.env` に入っているので、各自が用意するのは
-`SUPABASE_SERVICE_ROLE_KEY` の1行だけです。
+[Supabase](https://supabase.com/) でプロジェクトを作り、スキーマを適用します。
+
+- **CLI**: `supabase login` → `supabase link --project-ref <プロジェクトID>` → `supabase db push`
+- **ダッシュボード**: `supabase/migrations/` のSQLをファイル名の順に SQL Editor へ貼って実行する
+
+### 2. 環境変数を設定する
 
 ```bash
 cp .env.example .env.local
 ```
 
-`.env.local` を開いて、班で共有しているキーを貼ります。
+`.env.local` に、Supabaseの Project Settings > API にある3つの値と、Anthropic APIキーを書きます。
 
 ```
-SUPABASE_SERVICE_ROLE_KEY=（Slackで共有しているキー）
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+ANTHROPIC_API_KEY=...
 ```
 
-これで終わりです。スキーマもデータも投入済みなので、`npm run dev` で動きます。
+APIキーがなくても画面の閲覧などは動きますが、AIを使う処理（資料の読み取り・チャット回答・メモの要約）は
+エラーになります。
 
 <details>
-<summary>なぜ .env と .env.local に分かれているのか</summary>
+<summary>.env と .env.local の使い分け</summary>
+
+リポジトリの `.env` には、作者が用意したデモ環境のURLとanonキーだけをコミットしています。
 
 `NEXT_PUBLIC_` が付いた変数は、ビルド時にブラウザ向けのJSへそのまま埋め込まれます。
 つまりアプリを開いた人には元から見えているので、リポジトリに入れても増えるリスクはありません。
 データを守っているのはこの鍵ではなく、Supabase側のRLS（行レベルセキュリティ）です。
 
 `SUPABASE_SERVICE_ROLE_KEY` はRLSを一切通しません。漏れると誰でも全ユーザーのチャットを
-読めて、データもアカウントも消せます。このリポジトリは公開なので、こちらは
-`.env.local`（`.gitignore` 済み）に置き、コミットしません。
+読めて、データもアカウントも消せます。`ANTHROPIC_API_KEY` も漏れると課金に直結します。
+この2つは `.env.local`（`.gitignore` 済み）に置き、コミットしません。
 
-Next.jsは `.env.local` を `.env` より優先して読むので、手元で別のSupabaseプロジェクトに
-繋ぎたいときは `.env.local` にURLとanonキーを書けば上書きできます。
+Next.jsは `.env.local` を `.env` より優先して読むので、`.env.local` にURLとanonキーを書けば
+自分のSupabaseプロジェクトに繋がります。
 
 </details>
 
-#### 自分でSupabaseプロジェクトを立て直す場合
-
-Project Settings > API の3つの値を `.env.local` に入れ、スキーマを適用します。
-
-- **CLI**（Docker不要）: `supabase login` → `supabase link --project-ref xxxx` → `supabase db push`
-- **ダッシュボード**: `supabase/migrations/` のSQLをファイル名の順に SQL Editor へ貼って実行する
-
-そのあと `npm run db:seed` で初期データが入ります。
-
-#### ローカルのSupabaseで動かす場合
+<details>
+<summary>ローカルのSupabaseで動かす場合</summary>
 
 Docker と [Supabase CLI](https://supabase.com/docs/guides/cli) が必要です。
 `supabase start` が表示する `API URL` / `ANON_KEY` / `SERVICE_ROLE_KEY` を
-`.env.local` に書けば、`.env` の値を上書きしてローカルに繋がります。
+`.env.local` に書けば、ローカルに繋がります。
 マイグレーションは `supabase start` / `npm run db:reset` の時点で自動適用されます。
 
-### 2. AIのログイン
+</details>
 
-AIを使う機能（チャット回答・登録内容の解析）を動かすには、**このアプリを実行する
-マシン上で事前に一度だけ** `claude login` を実行しておいてください。
-ANTHROPIC_API_KEYの設定は不要です。ログインしていない場合でもアプリ自体は動きますが、
-AI関連の処理は「AIに接続できませんでした」という案内が表示されます。
-
-```bash
-claude login
-```
-
-### 3. スキーマと初期データ
-
-**班で共有しているクラウドに繋ぐ場合、この節は不要です**（スキーマもデータも投入済み）。
-Supabaseプロジェクトを新しく立てたときや、ローカルで動かすときだけ実行してください。
+### 3. デモデータを入れる
 
 ```bash
 npm run db:seed
 ```
 
-`db:seed` で入るもの:
+入るもの:
 
 - 所属部門4件（人事 / 総務 / 経理 / 法務）
 - デモアカウント（`demo@shincha.local` / `password123`、先輩・管理者、Lv8）
 - デモ用の業務内容32件（PDF添付つき／4部門分）
 - デモ用のみんなのメモ16件（4部門×4件）
 
-その他のコマンド:
-
-| コマンド | 用途 |
-|---|---|
-| `npm run db:reset` | ローカルDBを作り直してマイグレーションを再適用する（ローカル専用） |
-| `npm run db:types` | スキーマからTypeScriptの型を再生成する（マイグレーションを足したら実行） |
-
 デモ用の業務内容は `supabase/seed-data/` に置いています。実際に登録画面から
 PDFをアップロードしてAIに読み取らせた結果（要約・全文テキスト）を書き出したものなので、
-`claude login` が済んでいない環境でも同じデモデータを再現できます。
-同じタイトルが既にあれば追加しないため、`db:seed` は何度実行しても増えません。
+APIキーがなくても同じデモデータを再現できます。
+同じタイトルが既にあれば追加しないため、何度実行しても件数は増えません。
 
-添付PDFは圧縮していません。Ghostscriptで圧縮するとサイズは半分になりますが、
+添付PDFはあえて圧縮していません。Ghostscriptで圧縮するとサイズは半分になりますが、
 日本語のグリフが一部欠落してテキスト抽出結果が壊れる（「テスト方針」→「テスト 針」）ため、
-AIが読み取る原本としては使えないためです。
+AIが読み取る原本としては使えないからです。
 
-開発サーバーを起動します。
+### 4. 起動する
 
 ```bash
 npm run dev
 ```
 
-<http://localhost:3000> をブラウザで開いてください。デモアカウントでログインできます。
+<http://localhost:3000> を開き、デモアカウントでログインしてください。
 
 - ID: `demo@shincha.local`
 - パスワード: `password123`
@@ -147,57 +173,50 @@ npm run build
 npm run start
 ```
 
-> **セッションについて**：認証Cookieの発行・更新は Supabase Auth が行います。
-> トークンの更新は [src/proxy.ts](./src/proxy.ts)（Next.js 16 では `middleware` が
-> `proxy` に改称）で行っています。
+その他のコマンド:
 
-## 画面と仕様書の対応
+| コマンド | 用途 |
+|---|---|
+| `npm run db:reset` | ローカルDBを作り直してマイグレーションを再適用する（ローカル専用） |
+| `npm run db:types` | スキーマからTypeScriptの型を再生成する（マイグレーションを足したら実行） |
 
-| 画面 | 実装 | 仕様書の章 |
-|---|---|---|
-| ログイン | `/login` | 3章 |
-| 所属選択 | `/onboarding/team`（新規登録直後）、`/settings`（変更） | 4章 |
-| ホーム | `/` | 5章 |
-| 業務内容 | `/tasks`, `/tasks/[id]`, `/tasks/new` | 6章, 7章, 9.1節（マニュアルと統合） |
-| チャット | `/chat`, `/chat/[id]` | 8章 |
-| みんなのメモ | `/team-notes`, `/team-notes/[id]` | （追加機能） |
-| カレンダー・ToDo | `/calendar` | （追加機能） |
-| 設定 | `/settings` | 9.2節 |
+## Cloudflare Workers へのデプロイ
 
-新規登録（サインアップ）は `/signup` です。仕様書のログイン画面にある
-「新規登録はこちら」ボタンから遷移し、完了後は所属選択画面に進みます。
+[OpenNext](https://opennext.js.org/cloudflare)（`@opennextjs/cloudflare`）で Cloudflare Workers に載せています。
+設定は [wrangler.jsonc](./wrangler.jsonc) と [open-next.config.ts](./open-next.config.ts) です。
 
-## 実装メモ・仕様書からの変更点
+```bash
+npx wrangler login
 
-仕様書13章「未確定事項」を踏まえ、実装にあたって以下の通り判断しました。
+# 秘密は Worker の secret として登録する（コードやリポジトリには入れない）
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put ANTHROPIC_API_KEY
 
-- **所属選択画面**：新規登録直後のみ表示する仕様としました（`teamId` が未設定の
-  ユーザーがログインした場合も自動的にこの画面へ誘導されます）。所属は設定画面からも
-  変更できます。
-- **パスワードを忘れた方はこちら**：メール送信によるリセットは未実装です。
-  `/login/forgot` に、管理者へ依頼する旨の案内ページを用意しました。
-- **チーム横断の閲覧権限**：MVPでは全ユーザーが全チームの業務内容・マニュアルを
-  閲覧できる仕様にしています（チームタブによる絞り込みは可能）。権限を分ける場合は
-  `src/components/EntryListPage.tsx` のクエリ条件に絞り込みを追加してください。
-- **マニュアル・設定画面**：手書き資料に個別の下描きがなかったため、業務内容画面・
-  ホーム画面から類推したレイアウトで実装しています。
-
-## ディレクトリ構成（抜粋）
-
+npm run deploy
 ```
-supabase/migrations/       スキーマ・関数・RLSポリシー（番号順に適用される）
-supabase/seed.ts           初期データ投入スクリプト
-supabase/seed-data/        デモ用の業務内容・みんなのメモ（JSON＋添付PDF）
-src/proxy.ts               Supabaseのトークン更新（旧 middleware）
-src/lib/supabase/          Supabaseクライアント（本人用 / 管理用）と生成した型
-src/lib/auth.ts            ログイン中のユーザーの取得
-src/lib/claudeAgent.ts     Claude Agent SDK呼び出し（登録内容の解析・チャット回答）
-src/lib/retrieval.ts       業務内容の簡易検索（候補の絞り込み）
-src/app/actions/*.ts       Server Actions（フォーム送信の処理）
-src/app/(app)/*            ログイン後の画面（ホーム・業務内容・チャット等）
-src/app/login, /signup     ログイン・新規登録
-src/app/onboarding/team    所属選択画面
-```
+
+- `npm run preview` で、Cloudflare と同じランタイム（workerd）をローカルで起動できます。
+  このときの秘密は `.dev.vars`（`.gitignore` 済み）に `.env.local` と同じ形式で書きます。
+- デプロイ後、Supabase の Authentication > URL Configuration に公開URLを追加してください。
+- OpenNext はビルド時に `.env.local` の中身も Worker のコードへ埋め込みます。秘密がデプロイされる
+  コードに入らないよう、`npm run cf:build` では [scripts/strip-server-env.mjs](./scripts/strip-server-env.mjs) で
+  `NEXT_PUBLIC_` 以外の値を取り除いています。
+- Next.js 16 の `proxy.ts`（Node.js ランタイム）は、OpenNext では実験的サポートの扱いです。
+- Supabase の無料プランは、DBへのリクエストが7日間ないとプロジェクトを一時停止します。
+  [custom-worker.ts](./custom-worker.ts) で OpenNext の Worker を包み、Cron Trigger で毎日1回だけ
+  軽い読み取りを送っています（2027年8月末まで。期限を過ぎると何もしません）。
+
+## 設計上の判断
+
+- **所属部門の選択**：新規登録の直後に表示します。所属が未設定のままログインした
+  ユーザーも自動的にこの画面へ誘導します。所属は設定画面からも変更できます。
+- **パスワードのリセット**：メール送信によるリセットは今回のスコープ外とし、
+  `/login/forgot` で管理者に依頼するよう案内しています。
+- **部門をまたいだ閲覧**：業務内容は全員が全部門のものを閲覧できます（部門タブで絞り込み可能）。
+  他部門の手続きを調べたい場面があるためです。権限を分ける場合は
+  `src/components/EntryListPage.tsx` のクエリ条件に絞り込みを追加します。
+- **マニュアルと業務内容の統合**：当初は別画面として設計していましたが、
+  「業務内容」に統合しました。旧URL（`/manual`）は業務内容へリダイレクトします。
 
 ## Supabaseの設計メモ
 
@@ -217,6 +236,11 @@ RLSのポリシーは `supabase/migrations/20260909000003_rls_policies.sql` に�
 画面側でも `getCurrentUser()` で確認してから描画しています。Next.jsのレイアウトや
 proxy の `redirect` はページの描画自体を止めないため、そこに認可を任せると
 未ログインでもレスポンス本文に中身が載ってしまうためです。
+
+### セッションの更新
+
+認証Cookieの発行・更新は Supabase Auth が行い、トークンの更新は
+[src/proxy.ts](./src/proxy.ts) で行っています（Next.js 16 で `middleware` から `proxy` に改称されたもの）。
 
 ### RPC（DB側の関数）を使っている3か所
 
@@ -244,8 +268,8 @@ proxy の `redirect` はページの描画自体を止めないため、そこ�
 トリガ）ので、登録時に選んだ役割はサーバー側の管理用クライアントから設定しています。
 つまり画面から役割を変える経路は「登録時に選ぶ」「管理者が変える」の2つだけです。
 
-> 登録時は自己申告なので、誰でも先輩・管理者として登録できます。社外の人が登録できる
-> 場所に置く場合は、招待制にするなど別途の制限が要ります。
+> 登録時は自己申告なので、誰でも先輩・管理者として登録できます。実際の社内で運用する場合は、
+> 招待制にするなど別途の制限が要ります。
 
 ### アカウント削除
 
@@ -253,3 +277,22 @@ proxy の `redirect` はページの描画自体を止めないため、そこ�
 持たせてあります。`auth.users` を1行消すと、会話・メッセージ・添付・ToDo・メモ・
 いいね・非表示は cascade で消え、業務内容・予定・みんなのメモは登録者が null に
 なって残ります（「退会したユーザー」と表示されます）。
+
+## ディレクトリ構成（抜粋）
+
+```
+supabase/migrations/       スキーマ・関数・RLSポリシー（番号順に適用される）
+supabase/seed.ts           デモデータ投入スクリプト
+supabase/seed-data/        デモ用の業務内容・みんなのメモ（JSON＋添付PDF）
+src/proxy.ts               Supabaseのトークン更新（旧 middleware）
+src/lib/supabase/          Supabaseクライアント（本人用 / 管理用）と生成した型
+src/lib/auth.ts            ログイン中のユーザーの取得
+src/lib/claudeAgent.ts     Claudeの呼び出し（資料の読み取り・チャット回答・メモの要約）
+src/lib/retrieval.ts       業務内容の簡易検索（候補の絞り込み）
+src/app/actions/*.ts       Server Actions（フォーム送信の処理）
+src/app/(app)/*            ログイン後の画面（ホーム・業務内容・チャット等）
+src/app/login, /signup     ログイン・新規登録
+src/app/onboarding/team    所属選択画面
+```
+
+画面ごとの詳細な仕様は [仕様書.md](./仕様書.md) にあります。
