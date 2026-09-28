@@ -12,3 +12,7 @@ next-env.d.ts
 *.log
 .DS_Store
 *.tsbuildinfo
+# Cloudflare（OpenNext）のビルド成果物とローカル用の秘密。
+.open-next/
+.wrangler/
+.dev.vars

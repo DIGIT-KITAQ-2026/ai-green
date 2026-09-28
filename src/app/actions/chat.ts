@@ -190,7 +190,7 @@ export async function sendChatMessageAction(formData: FormData) {
   } catch (err) {
     console.error("AI回答の生成に失敗しました", err);
     answerText =
-      "ごめんね、いまAIに接続できなかったみたい。少し時間を置いてもう一度試してみてね。（管理者の方はサーバーで `claude login` が済んでいるかご確認ください）";
+      "ごめんね、いまAIに接続できなかったみたい。少し時間を置いてもう一度試してみてね。（管理者の方は ANTHROPIC_API_KEY の設定をご確認ください）";
   }
 
   // AIの応答には数秒かかるため、その間に別のタブでこの会話が削除されている

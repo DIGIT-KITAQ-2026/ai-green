@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shincha",
+  // OpenNext の Worker を包み、Supabase を止めないための定期実行を足している。
+  "main": "custom-worker.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "shincha"
+    }
+  ],
+  // next/image の画像最適化に使う。
+  "images": {
+    "binding": "IMAGES"
+  },
+  // 毎日 9:00（日本時間）。custom-worker.ts の scheduled が動く。
+  "triggers": {
+    "crons": ["0 0 * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+  // 秘密（SUPABASE_SERVICE_ROLE_KEY / ANTHROPIC_API_KEY）はここに書かず、
+  // `npx wrangler secret put <名前>` で登録する。
+}

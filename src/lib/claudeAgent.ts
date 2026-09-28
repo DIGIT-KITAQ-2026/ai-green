@@ -1,15 +1,12 @@
-import os from "os";
-import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { ContentBlockParam, MessageParam } from "@anthropic-ai/sdk/resources";
+import Anthropic from "@anthropic-ai/sdk";
+
+type ContentBlockParam = Anthropic.Beta.Messages.BetaContentBlockParam;
 
 /**
- * Claude呼び出しはすべて Claude Agent SDK（Claude Codeをライブラリ化したもの）経由で行う。
- * ANTHROPIC_API_KEY による従量課金APIは使用しない — ローカルの `claude login` セッション
- * （Claude Codeのサブスクリプション認証）をそのまま利用する。
- *
- * ツール（ファイル操作・Bash等）はすべて無効化し、CLAUDE.md等のプロジェクト設定も読み込まない
- * （settingSources: []）。単発の質問応答・資料読み取りにのみ使う、隔離されたワンショット呼び出し。
+ * Claude呼び出しはすべて Anthropic API（ANTHROPIC_API_KEY）で行う。
+ * ツールは渡さず、1回の問い合わせで完結させる。単発の質問応答・資料読み取りにのみ使う。
  */
+const MODEL = "claude-opus-5";
 
 export type UploadedFile = {
   kind: "image" | "pdf";
@@ -36,11 +33,6 @@ function fileToContentBlock(file: UploadedFile): ContentBlockParam {
   };
 }
 
-async function* singleTurn(content: ContentBlockParam[]): AsyncGenerator<SDKUserMessage> {
-  const message: MessageParam = { role: "user", content };
-  yield { type: "user", message, parent_tool_use_id: null };
-}
-
 /** モデルの応答からJSONオブジェクトを取り出す。失敗時はnullを返す。 */
 function tryParseJson(text: string): Record<string, unknown> | null {
   const match = text.match(/\{[\s\S]*\}/);
@@ -52,39 +44,33 @@ function tryParseJson(text: string): Record<string, unknown> | null {
 }
 
 /**
- * Claude Code(Claude Agent SDK)へ単発の問い合わせを送り、最終テキストを受け取る。
- * ツールなし・1ターンのみの隔離セッションとして起動し、完了後は必ずプロセスを閉じる。
+ * Claudeへ単発の問い合わせを送り、応答テキストを受け取る。
+ *
+ * 安全判定で断られたときは、APIの側で別のモデルに回して続けてもらう（fallbacks: "default"）。
+ * クライアントはリクエストのたびに作る。Cloudflare上では環境変数がリクエスト時にしか読めないため。
  */
 async function runAgentQuery(params: {
   systemPrompt: string;
   content: ContentBlockParam[];
 }): Promise<string> {
-  const events = query({
-    prompt: singleTurn(params.content),
-    options: {
-      systemPrompt: params.systemPrompt,
-      tools: [],
-      maxTurns: 1,
-      settingSources: [],
-      cwd: os.tmpdir(),
-    },
+  const client = new Anthropic();
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: 16000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    system: params.systemPrompt,
+    messages: [{ role: "user", content: params.content }],
   });
 
-  try {
-    for await (const message of events) {
-      if (message.type === "result") {
-        if (message.subtype === "success") {
-          return message.result;
-        }
-        throw new Error(
-          `Claude Codeでの応答生成に失敗しました（${message.subtype}）: ${message.errors.join(", ") || "詳細不明"}`,
-        );
-      }
-    }
-    throw new Error("Claude Codeから応答が得られませんでした。");
-  } finally {
-    events.close();
+  if (response.stop_reason === "refusal") {
+    throw new Error("AIがこの内容への回答を控えました。表現を変えてもう一度お試しください。");
   }
+  const text = response.content
+    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+    .join("");
+  if (!text) throw new Error("AIから応答が得られませんでした。");
+  return text;
 }
 
 /**

@@ -114,7 +114,7 @@ async function seedDemoUser(): Promise<string | null> {
 /**
  * デモ用の業務内容。実際に登録画面からPDFをアップロードしてAIに読み取らせた
  * 結果を書き出したもの（supabase/seed-data/task-entries.json）。
- * ここから流し込むので、AI（claude login）が無くても同じデモ環境を再現できる。
+ * ここから流し込むので、AIのAPIキーが無くても同じデモ環境を再現できる。
  */
 async function seedTaskEntries(authorId: string) {
   const jsonPath = path.join(SEED_DATA_DIR, "task-entries.json");

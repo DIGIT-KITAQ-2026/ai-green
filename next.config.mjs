@@ -16,3 +16,7 @@ const nextConfig = {
 };
 
 export default nextConfig;
+
+// `npm run dev` でも Cloudflare のバインディングを使えるようにする。
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+initOpenNextCloudflareForDev();
